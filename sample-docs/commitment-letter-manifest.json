@@ -1,0 +1,24 @@
+{
+  "testCases": [
+    {
+      "fileName": "commitment-letters/996448_Commitment_Letter.pdf",
+      "expectedFields": {}
+    },
+    {
+      "fileName": "commitment-letters/996450_Commitment_Letter.pdf",
+      "expectedFields": {}
+    },
+    {
+      "fileName": "commitment-letters/Commitment Letter VAMS 0.3.pdf",
+      "expectedFields": {}
+    },
+    {
+      "fileName": "commitment-letters/Commitment Letter VAMS 0.4.pdf",
+      "expectedFields": {}
+    },
+    {
+      "fileName": "commitment-letters/Commitment Letter VAMS 0.5.pdf",
+      "expectedFields": {}
+    }
+  ]
+}

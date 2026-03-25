@@ -1,0 +1,272 @@
+@page "/schema-editor"
+@page "/analyzers"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using CU_TestHarness.Components.Shared
+@inject ContentUnderstandingService CuService
+@inject ModelProfileState ProfileState
+@rendermode InteractiveServer
+
+<PageTitle>Schema Editor — CU Test Harness</PageTitle>
+
+<div class="container analyzers-container">
+    <h1>UC2 — Schema Tuning</h1>
+    <p class="subtitle">View, create, edit, and delete Content Understanding analyzers. Load a template or refine field names, types, and descriptions.</p>
+
+    <div class="analyzers-layout">
+        <AnalyzerListPanel @ref="_listPanel" SelectedId="@_selectedId" OnAnalyzerSelected="SelectAnalyzer" />
+
+        <!-- Detail Panel -->
+        <div class="analyzer-detail-panel">
+            @if (_selectedId is not null)
+            {
+                <div class="panel-header">
+                    <h2>@_selectedId</h2>
+                    <div class="detail-actions">
+                        @if (!_selectedId.StartsWith("prebuilt-"))
+                        {
+                            @if (_isEditing)
+                            {
+                                <button class="btn-small btn-save" @onclick="SaveEdit" disabled="@_isSaving">
+                                    @if (_isSaving) { <span class="spinner"></span> } Save
+                                </button>
+                                <button class="btn-small btn-cancel" @onclick="CancelEdit">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn-small" @onclick="StartEdit">Edit</button>
+                            }
+                            <button class="btn-small btn-danger" @onclick="ConfirmDelete" disabled="@_isDeleting">Delete</button>
+                        }
+                    </div>
+                </div>
+
+                @if (_isLoadingDef)
+                {
+                    <p class="no-data"><span class="spinner dark"></span> Loading definition…</p>
+                }
+                else if (_isEditing)
+                {
+                    <textarea class="schema-editor" @bind="_editJson" rows="25"></textarea>
+                }
+                else
+                {
+                    <pre class="json-output">@(_selectedDefinition ?? "Unable to load definition.")</pre>
+                }
+
+                @if (_detailMessage is not null)
+                {
+                    <div class="@(_detailIsError ? "error-box" : "success-box")">
+                        <pre>@_detailMessage</pre>
+                    </div>
+                }
+            }
+            else
+            {
+                <p class="no-data">Select an analyzer from the list to view its definition.</p>
+            }
+        </div>
+    </div>
+
+    <!-- Create New Analyzer -->
+    <div class="create-section">
+        <h2>Create New Analyzer</h2>
+        <div class="template-select">
+            <label>Start from template:</label>
+            <select @bind="_selectedTemplate">
+                <option value="">— Blank —</option>
+                @foreach (var (name, desc, _) in AnalyzerTemplates.All)
+                {
+                    <option value="@name">@name</option>
+                }
+            </select>
+            <label style="margin-left:0.5rem;">Model Profile:</label>
+            <select @bind="_createProfileId" style="padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);">
+                @foreach (var p in ModelProfile.AvailableProfiles)
+                {
+                    <option value="@p.Id">@p.DisplayName @(p.DataResidencyGuaranteed ? "\U0001f341" : "\U0001f310")</option>
+                }
+            </select>
+            <button class="btn-small" @onclick="ApplyTemplate">Load Template</button>
+        </div>
+        <textarea class="schema-editor" @bind="_createJson" rows="20" placeholder="Paste or edit analyzer JSON schema here…"></textarea>
+        <div class="create-actions">
+            <button class="btn-analyze" @onclick="CreateAnalyzer" disabled="@(string.IsNullOrWhiteSpace(_createJson) || _isCreating)">
+                @if (_isCreating) { <span class="spinner"></span> } Create Analyzer
+            </button>
+            @if (_createMessage is not null)
+            {
+                <span class="@(_createIsError ? "text-error" : "text-success")">@_createMessage</span>
+            }
+        </div>
+    </div>
+
+    <!-- Delete Confirmation -->
+    @if (_showDeleteConfirm)
+    {
+        <div class="modal-backdrop" @onclick="() => _showDeleteConfirm = false">
+            <div class="modal-dialog" @onclick:stopPropagation="true">
+                <h3>Delete Analyzer</h3>
+                <p>Are you sure you want to delete <strong>@_selectedId</strong>? This cannot be undone.</p>
+                <div class="modal-actions">
+                    <button class="btn-danger" @onclick="ExecuteDelete" disabled="@_isDeleting">
+                        @if (_isDeleting) { <span class="spinner"></span> } Delete
+                    </button>
+                    <button class="btn-small btn-cancel" @onclick="() => _showDeleteConfirm = false">Cancel</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private AnalyzerListPanel _listPanel = default!;
+
+    // Detail panel
+    private string? _selectedId;
+    private string? _selectedDefinition;
+    private bool _isLoadingDef;
+    private bool _isEditing;
+    private bool _isSaving;
+    private string _editJson = "";
+    private string? _detailMessage;
+    private bool _detailIsError;
+
+    // Delete
+    private bool _showDeleteConfirm;
+    private bool _isDeleting;
+
+    // Create
+    private string _createJson = "";
+    private string _selectedTemplate = "";
+    private string _createProfileId = "";
+    private bool _isCreating;
+    private string? _createMessage;
+    private bool _createIsError;
+
+    private async Task SelectAnalyzer(string id)
+    {
+        _selectedId = id;
+        _isEditing = false;
+        _detailMessage = null;
+        _isLoadingDef = true;
+        _createProfileId = ProfileState.ActiveProfile.Id;
+        StateHasChanged();
+
+        _selectedDefinition = await CuService.GetAnalyzerDefinitionAsync(id);
+        _isLoadingDef = false;
+    }
+
+    private void StartEdit()
+    {
+        _editJson = _selectedDefinition ?? "";
+        _isEditing = true;
+        _detailMessage = null;
+    }
+
+    private void CancelEdit()
+    {
+        _isEditing = false;
+        _detailMessage = null;
+    }
+
+    private async Task SaveEdit()
+    {
+        _isSaving = true;
+        _detailMessage = null;
+        StateHasChanged();
+
+        var (success, error) = await CuService.CreateOrUpdateAnalyzerAsync(_editJson, allowReplace: true);
+        _isSaving = false;
+
+        if (success)
+        {
+            _detailMessage = "Analyzer updated successfully.";
+            _detailIsError = false;
+            _isEditing = false;
+            _selectedDefinition = await CuService.GetAnalyzerDefinitionAsync(_selectedId!);
+        }
+        else
+        {
+            _detailMessage = error;
+            _detailIsError = true;
+        }
+    }
+
+    private void ConfirmDelete() => _showDeleteConfirm = true;
+
+    private async Task ExecuteDelete()
+    {
+        if (_selectedId is null) return;
+        _isDeleting = true;
+        StateHasChanged();
+
+        var (success, error) = await CuService.DeleteAnalyzerAsync(_selectedId);
+        _isDeleting = false;
+        _showDeleteConfirm = false;
+
+        if (success)
+        {
+            _selectedId = null;
+            _selectedDefinition = null;
+            await _listPanel.RefreshList();
+        }
+        else
+        {
+            _detailMessage = error;
+            _detailIsError = true;
+        }
+    }
+
+    private void ApplyTemplate()
+    {
+        var template = AnalyzerTemplates.All.FirstOrDefault(t => t.Name == _selectedTemplate);
+        if (template != default)
+        {
+            var profile = ModelProfile.AvailableProfiles.FirstOrDefault(p => p.Id == _createProfileId)
+                          ?? ProfileState.ActiveProfile;
+            _createJson = template.Generate("my_custom_analyzer", profile.CompletionModelName, profile.EmbeddingModelName);
+        }
+        _createMessage = null;
+    }
+
+    private async Task CreateAnalyzer()
+    {
+        // Client-side validation: reject hyphens before hitting the API
+        try
+        {
+            using var checkDoc = System.Text.Json.JsonDocument.Parse(_createJson);
+            if (checkDoc.RootElement.TryGetProperty("analyzerId", out var idEl))
+            {
+                var id = idEl.GetString() ?? "";
+                if (id.Contains('-'))
+                {
+                    _createMessage = "Analyzer ID cannot contain hyphens ('-'). Use underscores ('_') instead.";
+                    _createIsError = true;
+                    return;
+                }
+            }
+        }
+        catch { /* let the service handle JSON parse errors */ }
+
+        _isCreating = true;
+        _createMessage = null;
+        StateHasChanged();
+
+        var (success, error) = await CuService.CreateOrUpdateAnalyzerAsync(_createJson, allowReplace: false);
+        _isCreating = false;
+
+        if (success)
+        {
+            _createMessage = "Analyzer created successfully!";
+            _createIsError = false;
+            _createJson = "";
+            await _listPanel.RefreshList();
+        }
+        else
+        {
+            _createMessage = error;
+            _createIsError = true;
+        }
+    }
+}

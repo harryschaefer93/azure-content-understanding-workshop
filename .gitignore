@@ -1,0 +1,24 @@
+# Build artifacts and provider binaries
+**/.terraform/
+**/bin/
+**/obj/
+
+# Terraform local artifacts — never commit state, plans, or real variable files
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/tfplan
+**/*.tfplan
+**/*.tfvars
+!**/*.tfvars.example
+
+# Local dev artifacts
+__pycache__/
+*.pyc
+.venv/
+*.zip
+*.eml
+.playwright-last-results.json
+
+# Personal / local config
+**/appsettings.Personal.json
+.github/agents/

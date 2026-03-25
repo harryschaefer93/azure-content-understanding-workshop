@@ -1,0 +1,16 @@
+{
+  "_comment": "Connection name must match the AOAI connected resource name set in the Foundry Portal (CU resource → Settings → Connected resources). Example: if your Models account is 'contoso-models-ce', the connection name is 'contosomodelsce' (hyphens removed).",
+  "modelDeployments": {
+    "gpt-4.1": "yourconnectionname/gpt-41",
+    "gpt-4.1-mini": "yourconnectionname/gpt-41-mini",
+    "gpt-4.1-mini-ca": "yourconnectionname/gpt-41-mini-ca",
+    "text-embedding-ada-002": "yourconnectionname/text-embedding-ada-002",
+    "text-embedding-3-large": "yourconnectionname/text-embedding-3-large",
+    "text-embedding-3-small": "yourconnectionname/text-embedding-3-small",
+    "gpt-4o": "yourconnectionname/gpt-4o-ca",
+    "gpt-4o-ca": "yourconnectionname/gpt-4o-ca",
+    "prebuilt-analyzer-completion": "yourconnectionname/gpt-41",
+    "prebuilt-analyzer-embedding": "yourconnectionname/text-embedding-3-large",
+    "prebuilt-analyzer-completion-mini": "yourconnectionname/gpt-41-mini"
+  }
+}

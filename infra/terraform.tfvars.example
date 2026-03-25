@@ -1,0 +1,39 @@
+# Example values for deploy.tf
+# Copy to terraform.tfvars (or pass with -var-file=terraform.tfvars).
+
+# Resource group
+resource_group_name     = "contoso-cu-rg"
+resource_group_location = "canadacentral"
+
+# AI Services account names (globally unique)
+# Naming convention:
+#   {prefix}-cu-{region}      -> Content Understanding endpoint host
+#   {prefix}-models-{region}  -> GPT/embedding deployment host
+cu_account_name     = "contoso-cu-cc"
+models_account_name = "contoso-models-ce"
+
+# Regions
+cu_location     = "canadacentral"
+models_location = "canadaeast"
+
+# SKU
+sku = "S0"
+
+# Throughput capacities (1K TPM units)
+gpt41_capacity               = 100
+gpt41_mini_capacity          = 100
+gpt41_mini_standard_capacity = 100
+gpt4o_standard_capacity      = 100
+embedding_ada_capacity       = 50
+embedding_3large_capacity    = 50
+embedding_3small_capacity    = 50
+
+# Required governance tags
+# Add/change keys to match client policy.
+tags = {
+  environment = "prod"
+  owner       = "ai-platform-team"
+  project     = "content-understanding"
+  costCenter  = "12345"
+  dataClass   = "internal"
+}

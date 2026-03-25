@@ -1,0 +1,676 @@
+@page "/test"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using Microsoft.Extensions.Options
+@using System.Text.Json
+@inject ContentUnderstandingService CuService
+@inject CompletionService CompletionService
+@inject CostEstimator CostEstimator
+@inject IOptions<ContentUnderstandingOptions> Options
+@inject ModelProfileState ProfileState
+@rendermode InteractiveServer
+
+<PageTitle>Test Suite — CU Test Harness</PageTitle>
+
+<div class="container test-container">
+    <h1>Automated Analyzer Testing</h1>
+    <div class="model-banner">
+        <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
+        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+        { <span class="badge-residency">🍁 Canada</span> }
+        else
+        { <span class="badge-global">🌐 Global</span> }
+    </div>
+    <p class="subtitle">Batch-test an analyzer against multiple documents with expected field values. Upload test docs, define what you expect, and get a pass/fail report.</p>
+
+    @* ── Matching settings ── *@
+    <div class="matching-settings">
+        <label class="toggle-label">
+            <input type="checkbox" @bind="_useSemanticMatching" />
+            <span>Use LLM semantic matching</span>
+        </label>
+        @if (_useSemanticMatching)
+        {
+            <span class="badge-semantic">🧠 @ProfileState.ActiveCompletion.DisplayName (@ProfileState.ActiveCompletion.DeploymentType)</span>
+        }
+        else
+        {
+            <span class="badge-contains">Contains match</span>
+        }
+    </div>
+
+    <div class="upload-section">
+        <div class="analyzer-select">
+            <label for="analyzer">Analyzer</label>
+            <select id="analyzer" value="@_analyzerId" @onchange="OnAnalyzerChanged">
+                <optgroup label="Content Extraction">
+                    <option value="prebuilt-read">prebuilt-read</option>
+                    <option value="prebuilt-layout">prebuilt-layout</option>
+                </optgroup>
+                <optgroup label="Base">
+                    <option value="prebuilt-document">prebuilt-document</option>
+                </optgroup>
+                <optgroup label="Domain-Specific">
+                    <option value="prebuilt-invoice">prebuilt-invoice</option>
+                    <option value="prebuilt-receipt">prebuilt-receipt</option>
+                    <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+                    <option value="prebuilt-contract">prebuilt-contract</option>
+                </optgroup>
+                <optgroup label="RAG">
+                    <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+                </optgroup>
+                @if (_customAnalyzerIds.Count > 0)
+                {
+                    <optgroup label="Custom">
+                        @foreach (var id in _customAnalyzerIds)
+                        {
+                            <option value="@id">@id</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        <h3 style="margin-top:1rem;">Test Documents</h3>
+        <p class="hint" style="margin:0 0 0.5rem;">Upload documents and define expected field values for each. Or upload a JSON test manifest.</p>
+
+        @* Upload area for adding test files *@
+        <div class="upload-area @(_isDragOver ? "drag-over" : "")" style="margin-bottom:0.75rem;"
+             @ondragenter="@(() => _isDragOver = true)"
+             @ondragleave="@(() => _isDragOver = false)"
+             @ondragover:preventDefault>
+            <InputFile OnChange="OnFilesSelected" multiple
+                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+            <div class="upload-prompt">
+                <span>Add test documents — drag &amp; drop or <strong>click to browse</strong></span>
+                <span class="hint">Upload multiple files at once</span>
+            </div>
+        </div>
+
+        @* Manifest upload *@
+        <details class="manifest-section" open>
+            <summary style="cursor:pointer;font-weight:600;font-size:0.85rem;">Or upload a JSON test manifest</summary>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin:0.5rem 0;">
+                Format: <code>{{ "testCases": [ {{ "fileName": "doc.pdf", "expectedFields": {{ "Province": "Ontario" }} }} ] }}</code>
+            </p>
+            <div class="upload-area" style="padding:1rem;">
+                <InputFile OnChange="OnManifestSelected" accept=".json" />
+                <div class="upload-prompt">
+                    <span>Upload <strong>test-manifest.json</strong></span>
+                </div>
+            </div>
+            @if (_manifestMessage is not null)
+            {
+                <p style="font-size:0.82rem;margin-top:0.4rem;" class="@(_manifestIsError ? "text-error" : "text-success")">@_manifestMessage</p>
+            }
+        </details>
+
+        @* List of test cases with inline expected fields *@
+        @if (_testCases.Count > 0)
+        {
+            @if (_testCases.Any(t => t.FileBytes is not null))
+            {
+                <div style="margin:0.75rem 0;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                    <button class="btn-prefill" @onclick="PrefillAll"
+                            disabled="@(_isPrefilling || string.IsNullOrEmpty(_analyzerId))">
+                        @if (_isPrefilling)
+                        {
+                            <span class="spinner"></span> <span>Pre-filling @_prefillDoneCount / @_testCases.Count…</span>
+                        }
+                        else
+                        {
+                            <span>🔍 Pre-fill Expected Values</span>
+                        }
+                    </button>
+                    <span style="font-size:0.78rem;color:var(--text-muted);">Runs each doc through the analyzer and fills extracted values as expectations</span>
+                </div>
+            }
+
+            <div class="test-files">
+                @for (int i = 0; i < _testCases.Count; i++)
+                {
+                    var idx = i;
+                    var tc = _testCases[idx];
+                    <div class="test-file-item" style="flex-direction:column;align-items:stretch;">
+                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                            <span class="file-name">@tc.FileName</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">@tc.ExpectedFields.Count expected field(s)</span>
+                            @if (tc.IsPrefilled)
+                            {
+                                <span class="badge-prefilled">Auto-filled — review &amp; edit</span>
+                            }
+                            <button class="btn-link" @onclick="() => PrefillSingle(idx)" title="Auto-detect values for this doc"
+                                    disabled="@(_isPrefilling || string.IsNullOrEmpty(_analyzerId))">Auto-detect</button>
+                            <button class="btn-remove" @onclick="() => RemoveTestCase(idx)" title="Remove">✕</button>
+                        </div>
+                        <div class="expected-fields">
+                            @foreach (var key in tc.ExpectedFields.Keys.ToList())
+                            {
+                                var fieldName = key;
+                                <div class="field-row">
+                                    <input type="text" value="@fieldName" placeholder="Field name"
+                                           @onchange="e => RenameExpectedField(tc, fieldName, e.Value?.ToString() ?? string.Empty)" />
+                                    <input type="text" value="@tc.ExpectedFields[fieldName]" placeholder="Expected value"
+                                           @onchange="e => UpdateExpectedFieldValue(tc, fieldName, e.Value?.ToString() ?? string.Empty)" />
+                                    @if (tc.PrefilledConfidences.TryGetValue(fieldName, out var conf) && conf.HasValue)
+                                    {
+                                        <span class="prefill-confidence @GetConfidenceClass(conf)" title="Extraction confidence">@conf.Value.ToString("P0")</span>
+                                    }
+                                    <button class="btn-remove" @onclick="() => tc.ExpectedFields.Remove(fieldName)" title="Remove field">✕</button>
+                                </div>
+                            }
+                            <button class="btn-add-field" @onclick="() => AddExpectedField(tc)">+ Add expected field</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        <button class="btn-analyze" @onclick="RunTestSuite"
+                disabled="@(_testCases.Count == 0 || _isRunning)">
+            @if (_isRunning)
+            {
+                <span class="spinner"></span> <span>Running @_completedCount / @_testCases.Count…</span>
+            }
+            else
+            {
+                <span>Run Test Suite (@_testCases.Count docs)</span>
+            }
+        </button>
+        @if (_isRunning)
+        {
+            var pct = _testCases.Count > 0 ? (int)((double)_completedCount / _testCases.Count * 100) : 0;
+            <div class="progress-bar"><div class="progress-fill" style="width:@(pct)%"></div></div>
+        }
+    </div>
+
+    @* ── Results ── *@
+    @if (_suiteResult is not null)
+    {
+        <div class="results-section">
+            <h2>Test Results</h2>
+
+            @* Overall score *@
+            <div class="test-suite-summary">
+                <div class="test-score @GetScoreClass(_suiteResult.AccuracyPercent)">
+                    <span class="score-value">@_suiteResult.AccuracyPercent.ToString("F0")%</span>
+                    <span class="score-label">Accuracy</span>
+                </div>
+                <div class="test-score">
+                    <span class="score-value">@_suiteResult.PassedFields / @_suiteResult.TotalFields</span>
+                    <span class="score-label">Fields Passed</span>
+                </div>
+                <div class="test-score">
+                    <span class="score-value">@_suiteResult.Results.Count</span>
+                    <span class="score-label">Documents</span>
+                </div>
+                <div class="test-score">
+                    <span class="score-value">@_suiteResult.TotalDuration.TotalSeconds.ToString("F1")s</span>
+                    <span class="score-label">Total Time</span>
+                </div>
+                <div class="test-score">
+                    <span class="score-value">~$@_suiteResult.TotalCost.ToString("F4")</span>
+                    <span class="score-label">CU Cost</span>
+                </div>
+                @if (_suiteResult.TotalSemanticCost > 0)
+                {
+                    <div class="test-score">
+                        <span class="score-value">~$@_suiteResult.TotalSemanticCost.ToString("F4")</span>
+                        <span class="score-label">LLM Match Cost</span>
+                    </div>
+                }
+            </div>
+
+            @* Per-document results *@
+            @foreach (var docResult in _suiteResult.Results)
+            {
+                <div class="test-doc-result">
+                    <div class="test-doc-header">
+                        <h3>@docResult.FileName</h3>
+                        <div style="display:flex;gap:0.75rem;align-items:center;">
+                            <span class="status @docResult.Status.ToLowerInvariant()">@docResult.Status</span>
+                            @if (docResult.Duration.HasValue)
+                            {
+                                <span class="duration">@docResult.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                            }
+                            @if (docResult.Cost is not null)
+                            {
+                                <span style="font-size:0.8rem;color:var(--text-muted);">~$@docResult.Cost.EstimatedCost.ToString("F4")</span>
+                            }
+                            <span class="@(docResult.FailedCount == 0 ? "badge-pass" : "badge-fail")">
+                                @docResult.PassedCount/@docResult.FieldResults.Count passed
+                            </span>
+                        </div>
+                    </div>
+
+                    @if (docResult.ErrorMessage is not null)
+                    {
+                        <div class="error-box"><pre>@docResult.ErrorMessage</pre></div>
+                    }
+                    else if (docResult.FieldResults.Count > 0)
+                    {
+                        <table class="fields-table">
+                            <thead>
+                                <tr>
+                                    <th>Field</th>
+                                    <th>Expected</th>
+                                    <th>Extracted</th>
+                                    <th>Confidence</th>
+                                    <th>Match</th>
+                                    <th>Result</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var fr in docResult.FieldResults)
+                                {
+                                    <tr class="test-field-row @(fr.Passed ? "pass" : "fail")">
+                                        <td class="field-name">@fr.FieldName</td>
+                                        <td>@fr.ExpectedValue</td>
+                                        <td>@(fr.ExtractedValue ?? "—")</td>
+                                        <td class="field-confidence"><span class="@GetConfidenceClass(fr.Confidence)">@(fr.Confidence.HasValue ? $"{fr.Confidence.Value:P0}" : "—")</span></td>
+                                        <td>
+                                            @if (fr.MatchMethod == MatchMethod.Semantic)
+                                            {
+                                                <span class="badge-semantic" title="@(fr.CompletionModel ?? "")">🧠</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge-contains">Abc</span>
+                                            }
+                                        </td>
+                                        <td class="match-cell">
+                                            <span class="@(fr.Passed ? "badge-pass" : "badge-fail")">@(fr.Passed ? "Pass" : "Fail")</span>
+                                        </td>
+                                    </tr>
+                                    @if (fr.MatchMethod == MatchMethod.Semantic && !string.IsNullOrEmpty(fr.SemanticExplanation))
+                                    {
+                                        <tr class="semantic-reasoning-row">
+                                            <td colspan="6">
+                                                <details>
+                                                    <summary>
+                                                        LLM reasoning
+                                                        @if (fr.SemanticConfidence.HasValue)
+                                                        {
+                                                            <span class="@GetConfidenceClass(fr.SemanticConfidence)">(@fr.SemanticConfidence.Value.ToString("P0") conf)</span>
+                                                        }
+                                                        @if (fr.CompletionTokensUsed.HasValue)
+                                                        {
+                                                            <span class="token-count">@fr.CompletionTokensUsed tokens</span>
+                                                        }
+                                                    </summary>
+                                                    <p class="reasoning-text">@fr.SemanticExplanation</p>
+                                                </details>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string _analyzerId = "";
+    private bool _isDragOver;
+    private List<string> _customAnalyzerIds = [];
+    private List<TestCaseInput> _testCases = [];
+    private bool _isRunning;
+    private int _completedCount;
+    private TestSuiteViewModel? _suiteResult;
+    private string? _manifestMessage;
+    private bool _manifestIsError;
+    private List<string> _schemaFieldNames = [];
+    private bool _isPrefilling;
+    private int _prefillDoneCount;
+    private bool _useSemanticMatching = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _analyzerId = Options.Value.DefaultAnalyzerId;
+        var all = await CuService.ListAnalyzerIdsAsync();
+        _customAnalyzerIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+        await LoadSchemaFieldNames();
+    }
+
+    private async Task OnAnalyzerChanged(ChangeEventArgs e)
+    {
+        _analyzerId = e.Value?.ToString() ?? "";
+        await LoadSchemaFieldNames();
+    }
+
+    private async Task LoadSchemaFieldNames()
+    {
+        _schemaFieldNames.Clear();
+        if (string.IsNullOrEmpty(_analyzerId) || _analyzerId.StartsWith("prebuilt-"))
+            return;
+
+        var json = await CuService.GetAnalyzerDefinitionAsync(_analyzerId);
+        if (string.IsNullOrEmpty(json)) return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("fieldSchema", out var schema)
+                && schema.TryGetProperty("fields", out var fields)
+                && fields.ValueKind == JsonValueKind.Object)
+            {
+                _schemaFieldNames = fields.EnumerateObject().Select(p => p.Name).ToList();
+            }
+        }
+        catch { /* gracefully degrade — use empty list */ }
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        _isDragOver = false;
+        var maxSize = Options.Value.MaxFileSizeMB * 1024L * 1024L;
+        foreach (var file in e.GetMultipleFiles(20))
+        {
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var tc = new TestCaseInput
+            {
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                FileBytes = ms.ToArray()
+            };
+            // Pre-populate field names from the selected analyzer's schema
+            foreach (var fieldName in _schemaFieldNames)
+                tc.ExpectedFields[fieldName] = "";
+            _testCases.Add(tc);
+        }
+    }
+
+    private async Task OnManifestSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            var manifest = await JsonSerializer.DeserializeAsync<TestManifest>(stream,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (manifest?.TestCases is null || manifest.TestCases.Count == 0)
+            {
+                _manifestMessage = "Manifest loaded but contains no test cases.";
+                _manifestIsError = true;
+                return;
+            }
+
+            // Match manifest entries to uploaded files by name
+            int matched = 0;
+            foreach (var mc in manifest.TestCases)
+            {
+                var tc = _testCases.FirstOrDefault(t =>
+                    string.Equals(t.FileName, mc.FileName, StringComparison.OrdinalIgnoreCase));
+                if (tc is not null)
+                {
+                    foreach (var kvp in mc.ExpectedFields)
+                        tc.ExpectedFields[kvp.Key] = kvp.Value;
+                    matched++;
+                }
+            }
+
+            _manifestMessage = $"Loaded {manifest.TestCases.Count} test case(s) from manifest. Matched {matched} to uploaded files.";
+            _manifestIsError = matched == 0;
+        }
+        catch (Exception ex)
+        {
+            _manifestMessage = $"Error parsing manifest: {ex.Message}";
+            _manifestIsError = true;
+        }
+    }
+
+    private void RemoveTestCase(int index)
+    {
+        if (index >= 0 && index < _testCases.Count)
+            _testCases.RemoveAt(index);
+    }
+
+    private void AddExpectedField(TestCaseInput tc)
+    {
+        var key = $"Field{tc.ExpectedFields.Count + 1}";
+        tc.ExpectedFields[key] = "";
+    }
+
+    private void RenameExpectedField(TestCaseInput tc, string oldKey, string newKey)
+    {
+        if (string.IsNullOrWhiteSpace(newKey) || oldKey == newKey) return;
+        if (tc.ExpectedFields.TryGetValue(oldKey, out var val))
+        {
+            tc.ExpectedFields.Remove(oldKey);
+            tc.ExpectedFields[newKey] = val;
+        }
+    }
+
+    private void UpdateExpectedFieldValue(TestCaseInput tc, string fieldName, string newValue)
+    {
+        tc.ExpectedFields[fieldName] = newValue;
+    }
+
+    private async Task PrefillAll()
+    {
+        _isPrefilling = true;
+        _prefillDoneCount = 0;
+        StateHasChanged();
+
+        var semaphore = new SemaphoreSlim(3);
+        var tasks = _testCases.Select(async (tc, idx) =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                await PrefillTestCase(tc);
+                Interlocked.Increment(ref _prefillDoneCount);
+                await InvokeAsync(StateHasChanged);
+            }
+            finally { semaphore.Release(); }
+        });
+        await Task.WhenAll(tasks);
+
+        _isPrefilling = false;
+    }
+
+    private async Task PrefillSingle(int index)
+    {
+        if (index < 0 || index >= _testCases.Count) return;
+        _isPrefilling = true;
+        _prefillDoneCount = 0;
+        StateHasChanged();
+
+        await PrefillTestCase(_testCases[index]);
+
+        _isPrefilling = false;
+    }
+
+    private async Task PrefillTestCase(TestCaseInput tc)
+    {
+        if (tc.FileBytes is null || string.IsNullOrEmpty(_analyzerId)) return;
+
+        try
+        {
+            using var stream = new MemoryStream(tc.FileBytes);
+            var analysis = await CuService.AnalyzeFileAsync(_analyzerId, stream, tc.FileName, tc.ContentType);
+
+            if (analysis.Status != "Succeeded" || analysis.Fields.Count == 0) return;
+
+            foreach (var field in analysis.Fields)
+            {
+                // Only fill empty values — don't overwrite user edits
+                if (!tc.ExpectedFields.TryGetValue(field.Name, out var existing)
+                    || string.IsNullOrEmpty(existing))
+                {
+                    tc.ExpectedFields[field.Name] = field.Value ?? "";
+                }
+                tc.PrefilledConfidences[field.Name] = field.Confidence;
+            }
+            tc.IsPrefilled = true;
+        }
+        catch { /* individual doc failure — leave fields as-is */ }
+    }
+
+    private async Task RunTestSuite()
+    {
+        if (_testCases.Count == 0) return;
+
+        _isRunning = true;
+        _completedCount = 0;
+        _suiteResult = null;
+        StateHasChanged();
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var results = new List<TestCaseResult>();
+        var semaphore = new SemaphoreSlim(3); // limit concurrency
+
+        var tasks = _testCases.Select(async tc =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                var result = await RunSingleTest(tc);
+                lock (results) { results.Add(result); }
+                Interlocked.Increment(ref _completedCount);
+                await InvokeAsync(StateHasChanged);
+            }
+            finally { semaphore.Release(); }
+        });
+
+        await Task.WhenAll(tasks);
+        sw.Stop();
+
+        _suiteResult = new TestSuiteViewModel
+        {
+            AnalyzerId = _analyzerId,
+            Results = results.OrderBy(r => r.FileName).ToList(),
+            TotalDuration = sw.Elapsed,
+            TotalCost = results.Where(r => r.Cost is not null).Sum(r => r.Cost!.EstimatedCost),
+            TotalSemanticCost = results.Sum(r => r.FieldResults
+                .Where(f => f.CompletionTokensUsed.HasValue)
+                .Sum(f =>
+                {
+                    var est = CostEstimator.EstimateCompletionCost(f.CompletionModel ?? "", 0, f.CompletionTokensUsed ?? 0);
+                    return est.EstimatedCost;
+                }))
+        };
+
+        _isRunning = false;
+    }
+
+    private async Task<TestCaseResult> RunSingleTest(TestCaseInput tc)
+    {
+        var result = new TestCaseResult { FileName = tc.FileName };
+
+        if (tc.FileBytes is null)
+        {
+            result.Status = "Failed";
+            result.ErrorMessage = "File data not available.";
+            return result;
+        }
+
+        try
+        {
+            using var stream = new MemoryStream(tc.FileBytes);
+            var analysis = await CuService.AnalyzeFileAsync(_analyzerId, stream, tc.FileName, tc.ContentType);
+
+            result.Status = analysis.Status;
+            result.ErrorMessage = analysis.ErrorMessage;
+            result.Duration = analysis.Duration;
+            result.Cost = analysis.Cost;
+
+            if (analysis.Status == "Succeeded")
+            {
+                // Build field results by matching expected fields to extracted fields
+                foreach (var expected in tc.ExpectedFields)
+                {
+                    var extracted = FindBestMatch(expected.Key, analysis.Fields);
+
+                    // Contains-based pass (always computed as fallback)
+                    var containsPass = !string.IsNullOrEmpty(extracted?.Value) &&
+                        extracted.Value.Trim().Contains(expected.Value.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                    var fieldResult = new FieldTestResult
+                    {
+                        FieldName = expected.Key,
+                        ExpectedValue = expected.Value,
+                        ExtractedValue = extracted?.Value,
+                        Confidence = extracted?.Confidence,
+                        Passed = containsPass,
+                        MatchMethod = MatchMethod.Contains
+                    };
+
+                    // Semantic matching: only call LLM when contains failed and we have both values
+                    if (_useSemanticMatching && !containsPass
+                        && !string.IsNullOrWhiteSpace(expected.Value)
+                        && !string.IsNullOrWhiteSpace(extracted?.Value))
+                    {
+                        try
+                        {
+                            var semantic = await CompletionService.SemanticMatchAsync(
+                                expected.Key, expected.Value, extracted.Value);
+                            fieldResult.MatchMethod = MatchMethod.Semantic;
+                            fieldResult.Passed = semantic.IsMatch;
+                            fieldResult.SemanticExplanation = semantic.Reasoning;
+                            fieldResult.SemanticConfidence = semantic.Confidence;
+                            fieldResult.CompletionTokensUsed = semantic.InputTokens + semantic.OutputTokens;
+                            fieldResult.CompletionModel = semantic.ModelDeployment;
+                        }
+                        catch
+                        {
+                            // LLM call failed — fall back to contains result
+                        }
+                    }
+
+                    result.FieldResults.Add(fieldResult);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            result.Status = "Failed";
+            result.ErrorMessage = ex.Message;
+        }
+
+        return result;
+    }
+
+    private static ExtractedField? FindBestMatch(string expectedName, List<ExtractedField> fields)
+    {
+        // Pass 1: Exact case-insensitive
+        var exact = fields.FirstOrDefault(f =>
+            string.Equals(f.Name, expectedName, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null) return exact;
+
+        // Pass 2: Normalized key
+        var normalizedKey = FieldNameNormalizer.NormalizeKey(expectedName);
+        var normalized = fields.FirstOrDefault(f =>
+            FieldNameNormalizer.NormalizeKey(f.Name) == normalizedKey);
+        if (normalized is not null) return normalized;
+
+        // Pass 3: Fuzzy (Jaccard >= 0.5)
+        ExtractedField? best = null;
+        double bestScore = 0;
+        foreach (var f in fields)
+        {
+            var score = FieldNameNormalizer.TokenSimilarity(expectedName, f.Name);
+            if (score > bestScore) { bestScore = score; best = f; }
+        }
+        return bestScore >= 0.5 ? best : null;
+    }
+
+    private static string GetScoreClass(double pct) =>
+        pct >= 90 ? "score-green" : pct >= 70 ? "score-yellow" : "score-red";
+
+    private static string GetConfidenceClass(double? confidence) =>
+        confidence switch
+        {
+            >= 0.80 => "confidence-high",
+            >= 0.60 => "confidence-mid",
+            not null => "confidence-low",
+            _ => ""
+        };
+}

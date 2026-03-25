@@ -1,0 +1,537 @@
+@page "/validate"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using Microsoft.Extensions.Options
+@inject ContentUnderstandingService CuService
+@inject IOptions<ContentUnderstandingOptions> Options
+@inject ModelProfileState ProfileState
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Validate — CU Test Harness</PageTitle>
+
+<div class="container validate-container">
+    <h1>Multi-Document Validation</h1>
+    <div class="model-banner">
+        <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
+        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+        { <span class="badge-residency">🍁 Canada</span> }
+        else
+        { <span class="badge-global">🌐 Global</span> }
+    </div>
+    <p class="subtitle">Upload multiple documents of the same type and compare extracted fields across all of them. Discrepancies are highlighted in a cross-document matrix.</p>
+
+    <div class="upload-section">
+        <div class="validate-controls">
+            <div class="analyzer-select">
+                <label for="analyzer">Analyzer</label>
+                <select id="analyzer" @bind="_analyzerId">
+                    <optgroup label="Content Extraction (OCR only, no fields)">
+                        <option value="prebuilt-read">prebuilt-read</option>
+                        <option value="prebuilt-layout">prebuilt-layout</option>
+                    </optgroup>
+                    <optgroup label="Base (content only — use as parent for custom)">
+                        <option value="prebuilt-document">prebuilt-document</option>
+                    </optgroup>
+                    <optgroup label="Domain-Specific (built-in field schemas)">
+                        <option value="prebuilt-invoice">prebuilt-invoice</option>
+                        <option value="prebuilt-receipt">prebuilt-receipt</option>
+                        <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+                        <option value="prebuilt-creditCard">prebuilt-creditCard</option>
+                        <option value="prebuilt-contract">prebuilt-contract</option>
+                        <option value="prebuilt-utilityBill">prebuilt-utilityBill</option>
+                        <option value="prebuilt-payStub.us">prebuilt-payStub.us</option>
+                        <option value="prebuilt-healthInsuranceCard.us">prebuilt-healthInsuranceCard.us</option>
+                    </optgroup>
+                    <optgroup label="Utility (generic field extraction)">
+                        <option value="prebuilt-documentFields">prebuilt-documentFields</option>
+                        <option value="prebuilt-documentFieldSchema">prebuilt-documentFieldSchema</option>
+                    </optgroup>
+                    <optgroup label="RAG (LLM + Embeddings)">
+                        <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+                        <option value="prebuilt-imageSearch">prebuilt-imageSearch</option>
+                    </optgroup>
+                    @if (_customAnalyzerIds.Count > 0)
+                    {
+                        <optgroup label="Custom">
+                            @foreach (var id in _customAnalyzerIds)
+                            {
+                                <option value="@id">@id</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+        </div>
+
+        @* ── Dynamic N-doc upload ── *@
+        <div class="doc-slots">
+            @for (int i = 0; i < _docSlots.Count; i++)
+            {
+                var idx = i;
+                var slot = _docSlots[idx];
+                <div class="doc-slot">
+                    <div class="doc-label" style="display:flex;justify-content:space-between;align-items:center;">
+                        Document @(idx + 1)
+                        @if (_docSlots.Count > 2)
+                        {
+                            <button class="btn-remove" @onclick="() => RemoveDocSlot(idx)" title="Remove">✕</button>
+                        }
+                    </div>
+                    <div class="upload-area @(_isDragOver == idx ? "drag-over" : "")" style="padding:1rem;"
+                         @ondragenter="@(() => _isDragOver = idx)"
+                         @ondragleave="@(() => { if (_isDragOver == idx) _isDragOver = -1; })"
+                         @ondragover:preventDefault>
+                        <InputFile OnChange="e => OnDocFileSelected(e, idx)"
+                                   accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+                        <div class="upload-prompt">
+                            @if (slot.File is not null)
+                            {
+                                <span class="file-name">@slot.File.Name (@FormatSize(slot.File.Size))</span>
+                            }
+                            else
+                            {
+                                <span>Drag &amp; drop or <strong>browse</strong></span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            <button class="btn-add-doc" @onclick="AddDocSlot">+ Add Document</button>
+        </div>
+
+        <button class="btn-analyze" @onclick="RunValidation"
+                disabled="@(_docSlots.Count(s => s.File is not null) < 2 || _isAnalyzing)">
+            @if (_isAnalyzing)
+            {
+                <span class="spinner"></span> <span>Validating @_completedCount / @_docSlots.Count(s => s.File is not null)…</span>
+            }
+            else
+            {
+                <span>Validate All (@_docSlots.Count(s => s.File is not null) docs)</span>
+            }
+        </button>
+        @if (_isAnalyzing)
+        {
+            var total = _docSlots.Count(s => s.File is not null);
+            var pct = total > 0 ? (int)((double)_completedCount / total * 100) : 0;
+            <div class="progress-bar"><div class="progress-fill" style="width:@(pct)%"></div></div>
+        }
+    </div>
+
+    @* ── Results ── *@
+    @if (_nDocResult is not null && _nDocResult.DocResults.Count > 0)
+    {
+        @* ── Matrix Summary ── *@
+        @if (_nDocResult.FieldMatrix.Count > 0)
+        {
+            <div class="results-section">
+                <div class="matrix-summary">
+                    <div class="matrix-stat stat-consistent">
+                        <span class="stat-value">@_nDocResult.ConsistentFieldCount</span>
+                        <span class="stat-label">Consistent</span>
+                    </div>
+                    <div class="matrix-stat stat-discrepancy">
+                        <span class="stat-value">@_nDocResult.DiscrepancyCount</span>
+                        <span class="stat-label">Discrepancies</span>
+                    </div>
+                    <div class="matrix-stat">
+                        <span class="stat-value">@_nDocResult.FieldMatrix.Count</span>
+                        <span class="stat-label">Total Fields</span>
+                    </div>
+                    <div class="matrix-stat">
+                        <span class="stat-value">@_nDocResult.DocResults.Count</span>
+                        <span class="stat-label">Documents</span>
+                    </div>
+                </div>
+
+                <h2>Cross-Document Field Matrix</h2>
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem;">
+                    Green cells match the consensus value. Red cells are outliers that differ from the majority.
+                </p>
+                <div style="overflow-x:auto;">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                @for (int i = 0; i < _nDocResult.DocResults.Count; i++)
+                                {
+                                    <th title="@_nDocResult.DocResults[i].FileName">Doc @(i + 1)</th>
+                                }
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _nDocResult.FieldMatrix)
+                            {
+                                <tr>
+                                    <td class="field-name">@row.FieldName</td>
+                                    @for (int i = 0; i < row.Values.Count; i++)
+                                    {
+                                        <td class="@(row.IsOutlier(i) ? "outlier" : (row.IsConsistent ? "consensus" : ""))">
+                                            @(row.Values[i] ?? "—")
+                                            @{ var conf = row.Confidences[i]; }
+                                            @if (conf.HasValue)
+                                            {
+                                                <br/><span class="@GetConfidenceClass(conf)" style="font-size:0.75rem;">@($"{conf.Value:P0}")</span>
+                                            }
+                                        </td>
+                                    }
+                                    <td class="match-cell">
+                                        @if (row.IsConsistent)
+                                        {
+                                            <span class="badge-match">Consistent</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge-diff">Discrepancy</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="info-banner">No extracted fields were found. Try a <strong>domain-specific</strong> or <strong>custom</strong> analyzer to extract structured fields.</div>
+        }
+
+        @* ── Per-Document Details (collapsible) ── *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:1rem;margin-top:1.5rem;">
+            @for (int i = 0; i < _nDocResult.DocResults.Count; i++)
+            {
+                var doc = _nDocResult.DocResults[i];
+                var label = $"Document {i + 1}";
+                <details class="doc-details">
+                    <summary>
+                        <strong>@label</strong> — @doc.FileName
+                        <span class="status @doc.Status.ToLowerInvariant()">@doc.Status</span>
+                        @if (doc.Duration.HasValue)
+                        {
+                            <span class="duration">@doc.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                        }
+                        @if (doc.Cost is not null)
+                        {
+                            <span class="cost-inline">~$@doc.Cost.EstimatedCost.ToString("F4")</span>
+                        }
+                    </summary>
+                    @if (doc.ErrorMessage is not null)
+                    {
+                        <div class="error-box"><pre>@doc.ErrorMessage</pre></div>
+                    }
+                    else
+                    {
+                        var currentLabel = label;
+                        <div class="tabs">
+                            <button class="tab @(GetDocTab(currentLabel) == "fields" ? "active" : "")" @onclick='() => SetDocTab(currentLabel, "fields")'>Fields (@doc.Fields.Count)</button>
+                            <button class="tab @(GetDocTab(currentLabel) == "json" ? "active" : "")" @onclick='() => SetDocTab(currentLabel, "json")'>Raw JSON</button>
+                            @if (!string.IsNullOrEmpty(doc.Markdown))
+                            {
+                                <button class="tab @(GetDocTab(currentLabel) == "markdown" ? "active" : "")" @onclick='() => SetDocTab(currentLabel, "markdown")'>Markdown</button>
+                            }
+                        </div>
+                        <div class="tab-content">
+                            @if (GetDocTab(currentLabel) == "fields")
+                            {
+                                @if (doc.Fields.Count > 0)
+                                {
+                                    <table class="fields-table">
+                                        <thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var f in doc.Fields)
+                                            {
+                                                <tr>
+                                                    <td class="field-name">@f.Name</td>
+                                                    <td>@(f.Value ?? "—")</td>
+                                                    <td class="field-confidence"><span class="@GetConfidenceClass(f.Confidence)">@(f.Confidence.HasValue ? $"{f.Confidence.Value:P0}" : "—")</span></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else { <p class="no-data">No extracted fields</p> }
+                            }
+                            else if (GetDocTab(currentLabel) == "json")
+                            {
+                                <div class="json-wrapper">
+                                    <button class="btn-copy-json" @onclick="() => CopyDocJson(doc.RawJson)">Copy</button>
+                                    <pre class="json-output">@(doc.RawJson ?? "—")</pre>
+                                </div>
+                            }
+                            else
+                            {
+                                <pre class="markdown-output">@(doc.Markdown ?? "—")</pre>
+                            }
+                        </div>
+                    }
+                </details>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isAnalyzing;
+    private int _completedCount;
+    private string _analyzerId = "";
+    private int _isDragOver = -1;
+    private List<string> _customAnalyzerIds = [];
+    private List<DocSlot> _docSlots = [new(), new()]; // start with 2 slots
+    private NDocValidationViewModel? _nDocResult;
+    private Dictionary<string, string> _docTabs = [];
+
+    private class DocSlot
+    {
+        public IBrowserFile? File { get; set; }
+        public byte[]? Bytes { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _analyzerId = Options.Value.DefaultAnalyzerId;
+        var allAnalyzers = await CuService.ListAnalyzerIdsAsync();
+        _customAnalyzerIds = allAnalyzers.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+    }
+
+    private async Task OnDocFileSelected(InputFileChangeEventArgs e, int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= _docSlots.Count) return;
+        _isDragOver = -1;
+        var file = e.File;
+        var maxSize = Options.Value.MaxFileSizeMB * 1024L * 1024L;
+        await using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _docSlots[slotIndex] = new DocSlot { File = file, Bytes = ms.ToArray() };
+        ClearResults();
+    }
+
+    private void AddDocSlot() => _docSlots.Add(new());
+
+    private void RemoveDocSlot(int index)
+    {
+        if (index >= 0 && index < _docSlots.Count && _docSlots.Count > 2)
+        {
+            _docSlots.RemoveAt(index);
+            ClearResults();
+        }
+    }
+
+    private void ClearResults() { _nDocResult = null; }
+    private string GetDocTab(string label) => _docTabs.TryGetValue(label, out var tab) ? tab : "fields";
+    private void SetDocTab(string label, string tab) => _docTabs[label] = tab;
+
+    private async Task RunValidation()
+    {
+        var activeSlots = _docSlots.Where(s => s.File is not null && s.Bytes is not null).ToList();
+        if (activeSlots.Count < 2) return;
+
+        ClearResults();
+        _isAnalyzing = true;
+        _completedCount = 0;
+        _docTabs = [];
+        StateHasChanged();
+
+        var results = new AnalysisViewModel[activeSlots.Count];
+        var semaphore = new SemaphoreSlim(3);
+
+        var tasks = activeSlots.Select(async (slot, idx) =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                results[idx] = await AnalyzeDocAsync(slot.Bytes!, slot.File!.Name, slot.File.ContentType);
+                Interlocked.Increment(ref _completedCount);
+                await InvokeAsync(StateHasChanged);
+            }
+            finally { semaphore.Release(); }
+        });
+
+        await Task.WhenAll(tasks);
+
+        _nDocResult = new NDocValidationViewModel
+        {
+            DocResults = results.ToList()
+        };
+
+        BuildFieldMatrix();
+
+        _isAnalyzing = false;
+    }
+
+    private async Task<AnalysisViewModel> AnalyzeDocAsync(byte[] fileBytes, string fileName, string contentType)
+    {
+        try
+        {
+            using var s = new MemoryStream(fileBytes);
+            return await CuService.AnalyzeFileAsync(_analyzerId, s, fileName, contentType);
+        }
+        catch (Exception ex)
+        {
+            return new AnalysisViewModel
+            {
+                AnalyzerId = _analyzerId,
+                FileName = fileName,
+                Status = "Failed",
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    private void BuildFieldMatrix()
+    {
+        if (_nDocResult is null) return;
+
+        var docCount = _nDocResult.DocResults.Count;
+
+        // Collect all field names across all docs, normalizing for matching
+        var allFieldsByNormalizedKey = new Dictionary<string, (string DisplayName, List<(int DocIndex, ExtractedField Field)> Entries)>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < docCount; i++)
+        {
+            var doc = _nDocResult.DocResults[i];
+            if (doc.Status != "Succeeded") continue;
+
+            var flat = FlattenFields(doc.Fields);
+            foreach (var field in flat)
+            {
+                var key = FieldNameNormalizer.NormalizeKey(field.Name);
+                if (!allFieldsByNormalizedKey.ContainsKey(key))
+                    allFieldsByNormalizedKey[key] = (field.Name, []);
+                allFieldsByNormalizedKey[key].Entries.Add((i, field));
+            }
+        }
+
+        // Build matrix rows
+        _nDocResult.FieldMatrix = allFieldsByNormalizedKey
+            .OrderBy(kvp => kvp.Value.DisplayName)
+            .Select(kvp =>
+            {
+                var values = new List<string?>(new string?[docCount]);
+                var confidences = new List<double?>(new double?[docCount]);
+
+                foreach (var (docIdx, field) in kvp.Value.Entries)
+                {
+                    values[docIdx] = field.Value;
+                    confidences[docIdx] = field.Confidence;
+                }
+
+                // Compute consensus: most common non-null value
+                var nonNullValues = values.Where(v => v is not null).ToList();
+                var consensus = nonNullValues
+                    .GroupBy(v => v!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count())
+                    .FirstOrDefault()?.Key;
+
+                var isConsistent = nonNullValues.Count > 0 &&
+                    nonNullValues.All(v => string.Equals(v?.Trim(), consensus?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                return new MatrixFieldRow
+                {
+                    FieldName = kvp.Value.DisplayName,
+                    Values = values,
+                    Confidences = confidences,
+                    ConsensusValue = consensus,
+                    IsConsistent = isConsistent
+                };
+            })
+            .OrderBy(r => r.IsConsistent ? 1 : 0) // discrepancies first
+            .ThenBy(r => r.FieldName)
+            .ToList();
+    }
+
+    private static List<ExtractedField> FlattenFields(List<ExtractedField> fields)
+    {
+        var result = new List<ExtractedField>();
+        foreach (var field in fields)
+        {
+            if (field.Value is not null && field.Value.TrimStart().StartsWith('['))
+            {
+                if (TryFlattenJsonArray(field.Name, field.Value, result))
+                    continue;
+            }
+            if (field.Value is not null && field.Value.TrimStart().StartsWith('{'))
+            {
+                if (TryFlattenJsonObject(field.Name, field.Value, result))
+                    continue;
+            }
+            result.Add(field);
+        }
+        return result;
+    }
+
+    private static bool TryFlattenJsonArray(string prefix, string json, List<ExtractedField> result)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array) return false;
+            int index = 0;
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    foreach (var prop in item.EnumerateObject())
+                    {
+                        var val = prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                            ? prop.Value.GetString()
+                            : prop.Value.ToString();
+                        result.Add(new ExtractedField { Name = $"{prefix}[{index}].{prop.Name}", Value = val });
+                    }
+                }
+                else
+                {
+                    result.Add(new ExtractedField { Name = $"{prefix}[{index}]", Value = item.ToString() });
+                }
+                index++;
+            }
+            return index > 0;
+        }
+        catch { return false; }
+    }
+
+    private static bool TryFlattenJsonObject(string prefix, string json, List<ExtractedField> result)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object) return false;
+            int count = 0;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                var val = prop.Value.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? prop.Value.GetString()
+                    : prop.Value.ToString();
+                result.Add(new ExtractedField { Name = $"{prefix}.{prop.Name}", Value = val });
+                count++;
+            }
+            return count > 0;
+        }
+        catch { return false; }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string GetConfidenceClass(double? confidence) =>
+        confidence switch
+        {
+            >= 0.80 => "confidence-high",
+            >= 0.60 => "confidence-mid",
+            not null => "confidence-low",
+            _ => ""
+        };
+
+    private async Task CopyDocJson(string? json)
+    {
+        if (json is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", json);
+    }
+}

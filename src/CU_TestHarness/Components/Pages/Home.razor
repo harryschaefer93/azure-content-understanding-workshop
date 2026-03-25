@@ -1,0 +1,111 @@
+﻿@page "/"
+@page "/home"
+@using CU_TestHarness.Models
+@inject ModelProfileState ProfileState
+@rendermode InteractiveServer
+
+<PageTitle>CU Workshop — Test Harness</PageTitle>
+
+<div class="container">
+    <h1>Content Understanding Workshop</h1>
+    <div class="model-banner">
+        <strong>Active Model:</strong>
+        @ProfileState.ActiveProfile.DisplayName
+        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+        {
+            <span class="badge-residency">🍁 Canada</span>
+        }
+        else
+        {
+            <span class="badge-global">🌐 Global</span>
+        }
+        <a href="/settings">Change</a>
+    </div>
+    <p class="subtitle">Hands-on testing of Azure AI Content Understanding vs Document Intelligence. Each card below maps to a workshop use case — click through to test.</p>
+
+    <div class="uc-grid">
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC1 — Schema Generation</h3>
+                <span class="badge-cu">CU Only</span>
+            </div>
+            <p>Upload 3-5 sample docs to auto-detect fields and generate a draft custom analyzer schema. Edit field names, types, and descriptions, then create the analyzer.</p>
+            <div class="uc-footer">
+                <a href="/schema-builder">Go to Schema Builder</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC2 — Schema Tuning</h3>
+                <span class="badge-cu">CU Only</span>
+            </div>
+            <p>Manually refine analyzer field names, data types, and descriptions. Load a template, edit the JSON, and save as a custom analyzer.</p>
+            <div class="uc-footer">
+                <a href="/schema-editor">Go to Schema Editor</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC3 — Automated Testing</h3>
+                <span class="badge-both">CU + DI</span>
+            </div>
+            <p>Batch-test an analyzer against multiple documents with expected field values. Get a pass/fail report with accuracy scores.</p>
+            <div class="uc-footer">
+                <a href="/test">Go to Test Suite</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC4 — NL Data Extraction</h3>
+                <span class="badge-cu">CU Only</span>
+            </div>
+            <p>After analyzing a document, ask any natural language question to extract specific data points — no schema needed. DI cannot do this.</p>
+            <div class="uc-footer">
+                <a href="/analyze">Go to Analyze</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC5 — Multi-Doc Validation</h3>
+                <span class="badge-both">CU + DI</span>
+            </div>
+            <p>Upload multiple documents of the same type and compare extracted fields across all of them. Discrepancies are highlighted in a matrix view.</p>
+            <div class="uc-footer">
+                <a href="/validate">Go to Validate</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>UC6 — Corrective Feedback</h3>
+                <span class="badge-cu">CU Advantage</span>
+            </div>
+            <p>When a field is misextracted, refine the analyzer's field description and re-analyze. CU Studio (Apr 1) will add point-and-click labeling.</p>
+            <div class="uc-footer">
+                <a href="/feedback">Go to Feedback</a>
+                <span class="badge-studio">CU Studio soon</span>
+            </div>
+        </div>
+
+        <div class="uc-card">
+            <div class="uc-card-header">
+                <h3>CU vs DI Comparison</h3>
+                <span class="badge-both">Both</span>
+            </div>
+            <p>Run the same document through Content Understanding and Document Intelligence side-by-side. See which service extracts more fields, with cost comparison.</p>
+            <div class="uc-footer">
+                <a href="/compare">Go to Compare</a>
+                <span class="badge-ready">Ready</span>
+            </div>
+        </div>
+    </div>
+</div>

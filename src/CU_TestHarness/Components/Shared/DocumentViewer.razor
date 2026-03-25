@@ -1,0 +1,188 @@
+@using CU_TestHarness.Models
+@implements IDisposable
+@inject IJSRuntime JS
+
+<div class="document-viewer">
+    <div class="viewer-toolbar">
+        @if (_isPdf)
+        {
+            <button disabled="@(_currentPage <= 1)" @onclick="PreviousPage">&#9664; Prev</button>
+            <span>Page @_currentPage / @_totalPages</span>
+            <button disabled="@(_currentPage >= _totalPages)" @onclick="NextPage">Next &#9654;</button>
+        }
+        <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted);">
+            @if (_isPdf) { <span>PDF</span> } else { <span>Image</span> }
+        </span>
+    </div>
+    <div class="viewer-canvas-container">
+        @if (_isPdf)
+        {
+            <canvas id="@_canvasId"></canvas>
+        }
+        else
+        {
+            <img id="@_imgId" alt="Document preview" />
+        }
+        <div id="@_overlayId" class="bbox-overlay-container"></div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public byte[]? FileBytes { get; set; }
+    [Parameter] public string ContentType { get; set; } = "";
+    [Parameter] public List<ExtractedField>? Fields { get; set; }
+    [Parameter] public List<PageInfo>? Pages { get; set; }
+    [Parameter] public string? HighlightedFieldName { get; set; }
+    [Parameter] public int PageFilter { get; set; }
+    [Parameter] public EventCallback<string> OnFieldClicked { get; set; }
+
+    private string _canvasId = "viewer-canvas-" + Guid.NewGuid().ToString("N")[..8];
+    private string _imgId = "viewer-img-" + Guid.NewGuid().ToString("N")[..8];
+    private string _overlayId = "viewer-overlay-" + Guid.NewGuid().ToString("N")[..8];
+
+    private int _currentPage = 1;
+    private int _totalPages = 1;
+    private double _canvasWidth;
+    private double _canvasHeight;
+    private double _scale = 1.5;
+    private bool _isPdf;
+    private bool _rendered;
+    private DotNetObjectReference<DocumentViewer>? _selfRef;
+
+    protected override void OnParametersSet()
+    {
+        _isPdf = ContentType?.Contains("pdf", StringComparison.OrdinalIgnoreCase) == true
+                 || ContentType == "application/pdf";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (FileBytes is null || FileBytes.Length == 0) return;
+
+        if (firstRender || !_rendered)
+        {
+            _rendered = true;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await RenderDocument();
+        }
+    }
+
+    /// <summary>Call this from parent to force re-render when file changes.</summary>
+    public async Task RenderNewFile()
+    {
+        _currentPage = 1;
+        _rendered = false;
+        if (_isPdf)
+            await JS.InvokeVoidAsync("harnessInterop.resetPdfCache");
+        await RenderDocument();
+    }
+
+    /// <summary>Get the rotation angle for the current page, snapped to nearest 90°.</summary>
+    private int GetCurrentPageRotation()
+    {
+        if (Pages is null) return 0;
+        var pageInfo = Pages.FirstOrDefault(p => p.PageNumber == _currentPage);
+        if (pageInfo is null) return 0;
+        // Azure DI returns angle in degrees (clockwise). Snap to nearest 90.
+        var angle = pageInfo.Angle;
+        var snapped = (int)(Math.Round(angle / 90.0) * 90) % 360;
+        // Normalize negative angles
+        if (snapped < 0) snapped += 360;
+        return snapped;
+    }
+
+    private async Task RenderDocument()
+    {
+        if (FileBytes is null) return;
+
+        if (_isPdf)
+        {
+            var rotation = GetCurrentPageRotation();
+            var result = await JS.InvokeAsync<PdfRenderResult?>(
+                "harnessInterop.renderPdfPage", _canvasId, FileBytes, _currentPage, rotation);
+            if (result is not null)
+            {
+                _canvasWidth = result.Width;
+                _canvasHeight = result.Height;
+                _totalPages = result.PageCount;
+                _scale = result.Scale;
+                StateHasChanged();
+                await DrawOverlays();
+            }
+        }
+        else
+        {
+            var result = await JS.InvokeAsync<ImageRenderResult?>(
+                "harnessInterop.renderImage", _imgId, FileBytes, ContentType);
+            if (result is not null)
+            {
+                _canvasWidth = result.Width;
+                _canvasHeight = result.Height;
+                _totalPages = 1;
+                await DrawOverlays();
+            }
+        }
+    }
+
+    private async Task DrawOverlays()
+    {
+        if (Fields is null || Fields.Count == 0)
+        {
+            await JS.InvokeVoidAsync("harnessInterop.clearOverlays", _overlayId);
+            return;
+        }
+
+        var rotation = _isPdf ? GetCurrentPageRotation() : 0;
+
+        var boxes = Fields
+            .Where(f => f.BoundingRegions is not null)
+            .SelectMany(f => f.BoundingRegions!
+                .Where(br => br.PageNumber == _currentPage)
+                .Select(br => new
+                {
+                    fieldName = f.Name,
+                    value = f.Value ?? "",
+                    polygon = br.Polygon
+                }))
+            .ToList();
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("harnessInterop.drawBoundingBoxes",
+            _overlayId, boxes, _scale, _canvasWidth, _canvasHeight, HighlightedFieldName,
+            rotation, _selfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnBBoxClicked(string fieldName)
+    {
+        if (OnFieldClicked.HasDelegate)
+            await OnFieldClicked.InvokeAsync(fieldName);
+    }
+
+    private async Task PreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            await RenderDocument();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (_currentPage < _totalPages)
+        {
+            _currentPage++;
+            await RenderDocument();
+        }
+    }
+
+    public void Dispose()
+    {
+        _selfRef?.Dispose();
+    }
+
+    // JS interop result types
+    private record PdfRenderResult(double Width, double Height, int PageCount, double Scale);
+    private record ImageRenderResult(double Width, double Height);
+}

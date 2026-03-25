@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CU vs DI — Architecture Comparison</title>
+<style>
+  /* ===== Dark Theme ===== */
+  :root {
+    --bg: #1e1e2e;
+    --surface: #262637;
+    --surface-alt: #2a2a3d;
+    --border: #3b3b52;
+    --text: #cdd6f4;
+    --text-muted: #9399b2;
+    --blue: #89b4fa;
+    --teal: #94e2d5;
+    --green: #a6e3a1;
+    --red: #f38ba8;
+    --yellow: #f9e2af;
+    --peach: #fab387;
+    --mauve: #cba6f7;
+    --accent: #89b4fa;
+    --accent-dim: rgba(137,180,250,0.12);
+    --radius: 8px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 2rem; max-width: 1200px; margin: 0 auto;
+  }
+
+  /* ===== Typography ===== */
+  h1 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: 1rem; color: var(--blue); }
+  h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.95rem; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ===== Navigation ===== */
+  .back-link {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;
+  }
+  .back-link:hover { color: var(--blue); }
+
+  .toc {
+    display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 2.5rem;
+  }
+  .toc a {
+    padding: 0.35rem 0.75rem; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); font-size: 0.8rem; color: var(--text-muted);
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .toc a:hover { border-color: var(--blue); color: var(--blue); text-decoration: none; }
+
+  /* ===== Section cards ===== */
+  section {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.5rem 2rem; margin-bottom: 2rem;
+  }
+
+  /* ===== Resource Diagrams (SVG) ===== */
+  .diagram-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;
+  }
+  .diagram-col { text-align: center; }
+  .diagram-col h3 { text-align: center; margin-bottom: 0.75rem; }
+  .diagram-col svg { max-width: 100%; height: auto; }
+
+  .badge {
+    display: inline-block; font-size: 0.7rem; font-weight: 600;
+    padding: 0.15rem 0.5rem; border-radius: 3px; vertical-align: middle;
+  }
+  .badge-di { background: #6b6b6b; color: #fff; }
+  .badge-cu { background: var(--blue); color: #1e1e2e; }
+  .badge-nollm { background: var(--surface-alt); color: var(--text-muted); border: 1px solid var(--border); }
+  .badge-llm { background: rgba(137,180,250,0.2); color: var(--blue); border: 1px solid rgba(137,180,250,0.3); }
+  .badge-std { background: rgba(166,227,161,0.15); color: var(--green); }
+  .badge-global { background: rgba(249,226,175,0.15); color: var(--yellow); }
+
+  /* ===== Analyzer Taxonomy ===== */
+  .tier-list { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+
+  .tier-card {
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .tier-card summary {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1.25rem;
+    cursor: pointer; font-weight: 600; font-size: 0.95rem;
+    list-style: none; transition: background 0.15s;
+  }
+  .tier-card summary::-webkit-details-marker { display: none; }
+  .tier-card summary::before {
+    content: "▸"; font-size: 0.85rem; color: var(--text-muted);
+    transition: transform 0.2s;
+  }
+  .tier-card[open] summary::before { transform: rotate(90deg); }
+  .tier-card summary:hover { background: rgba(137,180,250,0.06); }
+
+  .tier-body {
+    padding: 0.75rem 1.25rem 1rem 2.5rem; border-top: 1px solid var(--border);
+    font-size: 0.88rem; color: var(--text-muted);
+  }
+  .tier-body ul { list-style: none; padding: 0; }
+  .tier-body li { padding: 0.25rem 0; }
+  .tier-body li::before { content: "→ "; color: var(--blue); }
+  .tier-body code {
+    background: rgba(137,180,250,0.1); padding: 0.1rem 0.35rem;
+    border-radius: 3px; font-size: 0.82rem; color: var(--teal);
+  }
+  .tier-note { margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted); font-style: italic; }
+
+  /* ===== Model Routing Flow ===== */
+  .routing-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;
+  }
+  .routing-col { min-width: 0; }
+  .routing-col h3 { margin-bottom: 0.75rem; }
+
+  .flow-diagram {
+    background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.25rem; font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 0.78rem; line-height: 1.7; overflow-x: auto; white-space: pre;
+    color: var(--text-muted);
+  }
+  .flow-diagram .hl-blue { color: var(--blue); }
+  .flow-diagram .hl-teal { color: var(--teal); }
+  .flow-diagram .hl-green { color: var(--green); }
+  .flow-diagram .hl-yellow { color: var(--yellow); }
+  .flow-diagram .hl-peach { color: var(--peach); }
+  .flow-diagram .hl-mauve { color: var(--mauve); }
+  .flow-diagram .hl-muted { color: #585b70; }
+  .flow-diagram .hl-red { color: var(--red); }
+
+  /* ===== Comparison Table ===== */
+  .compare-table {
+    width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.88rem;
+  }
+  .compare-table th {
+    text-align: left; font-weight: 600; padding: 0.65rem 1rem;
+    border-bottom: 2px solid var(--border); color: var(--text-muted);
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .compare-table td {
+    padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .compare-table tr:hover td { background: rgba(137,180,250,0.04); }
+  .compare-table .aspect { font-weight: 600; color: var(--text); white-space: nowrap; }
+  .compare-table .di-val { color: var(--text-muted); }
+  .compare-table .cu-val { color: var(--text); }
+  .cu-highlight { background: rgba(137,180,250,0.08); }
+
+  /* ===== Data Residency ===== */
+  .residency-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem;
+  }
+  .residency-card {
+    background: var(--surface-alt); border-radius: var(--radius); padding: 1.25rem;
+    border-left: 4px solid var(--green);
+  }
+  .residency-card.global { border-left-color: var(--yellow); }
+  .residency-card h3 { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 1rem; }
+  .residency-card p { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.5rem; }
+  .residency-card .deploy-list {
+    list-style: none; padding: 0; font-size: 0.82rem;
+  }
+  .residency-card .deploy-list li { padding: 0.2rem 0; }
+  .residency-card .deploy-list li::before { content: "• "; color: var(--text-muted); }
+  .residency-card .deploy-list code {
+    background: rgba(137,180,250,0.1); padding: 0.1rem 0.3rem;
+    border-radius: 3px; font-size: 0.78rem; color: var(--teal);
+  }
+
+  /* ===== Defaults Mapping ===== */
+  .defaults-table {
+    width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.82rem;
+  }
+  .defaults-table th {
+    text-align: left; font-weight: 600; padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border); color: var(--text-muted);
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .defaults-table td {
+    padding: 0.4rem 0.75rem; border-bottom: 1px solid var(--border);
+    font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+  }
+  .defaults-table tr:hover td { background: rgba(137,180,250,0.04); }
+  .defaults-table .key { color: var(--blue); }
+  .defaults-table .val { color: var(--teal); }
+  .defaults-table .cat { color: var(--text-muted); font-family: inherit; font-style: italic; }
+  .defaults-table tr.divider td { border-bottom: 2px solid var(--border); }
+
+  /* ===== Footer ===== */
+  footer {
+    text-align: center; padding: 2rem 0 0.5rem; font-size: 0.8rem; color: var(--text-muted);
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 800px) {
+    body { padding: 1rem; }
+    .diagram-grid, .routing-grid, .residency-grid { grid-template-columns: 1fr; }
+    section { padding: 1rem 1.25rem; }
+  }
+</style>
+</head>
+<body>
+
+<a class="back-link" href="/">← Back to Test Harness</a>
+
+<h1>CU vs DI — Architecture Comparison</h1>
+<p class="subtitle">Azure AI Content Understanding vs Document Intelligence — workshop reference</p>
+
+<nav class="toc" style="margin-bottom:0.75rem;">
+  <a href="#resources">Resource Architecture</a>
+  <a href="#taxonomy">Analyzer Taxonomy</a>
+  <a href="#routing">Model Routing</a>
+  <a href="#defaults">Defaults Mapping</a>
+  <a href="#comparison">Capability Comparison</a>
+  <a href="#residency">Data Residency</a>
+  <a href="#docs">MS Learn Docs</a>
+</nav>
+<nav class="toc" style="margin-bottom:2.5rem;">
+  <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/overview" target="_blank" style="background:rgba(148,226,213,0.1); border-color:rgba(148,226,213,0.3);">CU Overview ↗</a>
+  <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/overview" target="_blank" style="background:rgba(148,226,213,0.1); border-color:rgba(148,226,213,0.3);">DI Overview ↗</a>
+  <a href="https://learn.microsoft.com/en-us/rest/api/contentunderstanding/operation-groups" target="_blank" style="background:rgba(148,226,213,0.1); border-color:rgba(148,226,213,0.3);">CU REST API ↗</a>
+  <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/bring-your-own-cross-resource-capacity" target="_blank" style="background:rgba(148,226,213,0.1); border-color:rgba(148,226,213,0.3);">Cross-Resource Setup ↗</a>
+</nav>
+
+<!-- ============================================================ -->
+<!-- SECTION 1: Resource Architecture -->
+<!-- ============================================================ -->
+<section id="resources">
+<h2>Resource Architecture</h2>
+<p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+  DI uses a single AI Services account. CU uses <strong>two</strong> accounts — one hosts the CU endpoint, the other hosts GPT and embedding model deployments. CU calls the Models account internally via managed identity RBAC.
+  <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/bring-your-own-cross-resource-capacity" target="_blank">Cross-resource setup guide</a> · <a href="https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview" target="_blank">Managed identities overview</a></span>
+</p>
+
+<div class="diagram-grid">
+  <!-- DI Diagram -->
+  <div class="diagram-col">
+    <h3><span class="badge badge-di">DI</span> Document Intelligence</h3>
+    <svg viewBox="0 0 380 220" xmlns="http://www.w3.org/2000/svg">
+      <!-- User -->
+      <rect x="130" y="10" width="120" height="36" rx="6" fill="#2a2a3d" stroke="#3b3b52"/>
+      <text x="190" y="33" text-anchor="middle" fill="#cdd6f4" font-size="13" font-weight="600">User / Client</text>
+      <!-- Arrow -->
+      <line x1="190" y1="46" x2="190" y2="80" stroke="#6b6b6b" stroke-width="2" marker-end="url(#arrow-di)"/>
+      <!-- DI Box -->
+      <rect x="55" y="80" width="270" height="70" rx="8" fill="#2a2a3d" stroke="#6b6b6b" stroke-width="2"/>
+      <text x="190" y="104" text-anchor="middle" fill="#cdd6f4" font-size="13" font-weight="600">AI Services Account</text>
+      <text x="190" y="122" text-anchor="middle" fill="#9399b2" font-size="11">prebuilt-layout · prebuilt-invoice · prebuilt-read</text>
+      <text x="190" y="140" text-anchor="middle" fill="#9399b2" font-size="10">OCR + ML extraction only</text>
+      <!-- Arrow down -->
+      <line x1="190" y1="150" x2="190" y2="180" stroke="#6b6b6b" stroke-width="2" marker-end="url(#arrow-di)"/>
+      <!-- Output -->
+      <rect x="105" y="180" width="170" height="32" rx="6" fill="#2a2a3d" stroke="#3b3b52"/>
+      <text x="190" y="200" text-anchor="middle" fill="#9399b2" font-size="11">Fields · Tables · KV Pairs</text>
+      <defs>
+        <marker id="arrow-di" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="none" stroke="#6b6b6b" stroke-width="1.5"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+
+  <!-- CU Diagram -->
+  <div class="diagram-col">
+    <h3><span class="badge badge-cu">CU</span> Content Understanding</h3>
+    <svg viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg">
+      <!-- User -->
+      <rect x="150" y="5" width="120" height="36" rx="6" fill="#2a2a3d" stroke="#3b3b52"/>
+      <text x="210" y="28" text-anchor="middle" fill="#cdd6f4" font-size="13" font-weight="600">User / Client</text>
+      <!-- Arrow down -->
+      <line x1="210" y1="41" x2="210" y2="70" stroke="#89b4fa" stroke-width="2" marker-end="url(#arrow-cu)"/>
+      <!-- CU Account Box -->
+      <rect x="40" y="70" width="250" height="80" rx="8" fill="#2a2a3d" stroke="#89b4fa" stroke-width="2"/>
+      <text x="165" y="94" text-anchor="middle" fill="#89b4fa" font-size="12" font-weight="700">CU Account</text>
+      <text x="165" y="112" text-anchor="middle" fill="#cdd6f4" font-size="11">Canada Central</text>
+      <text x="165" y="128" text-anchor="middle" fill="#9399b2" font-size="10">Orchestrates analysis</text>
+      <text x="165" y="142" text-anchor="middle" fill="#9399b2" font-size="10">Prebuilt + Custom analyzers</text>
+      <!-- RBAC Arrow (CU → Models) -->
+      <path d="M290,110 Q340,110 340,150 Q340,190 360,190" fill="none" stroke="#94e2d5" stroke-width="2" stroke-dasharray="6,3"/>
+      <line x1="353" y1="190" x2="370" y2="190" stroke="#94e2d5" stroke-width="2" marker-end="url(#arrow-teal)"/>
+      <!-- RBAC Label -->
+      <rect x="295" y="140" width="115" height="22" rx="4" fill="rgba(148,226,213,0.12)" stroke="rgba(148,226,213,0.3)"/>
+      <text x="352" y="155" text-anchor="middle" fill="#94e2d5" font-size="9" font-weight="600">Managed Identity RBAC</text>
+      <!-- Entra Auth label -->
+      <rect x="305" y="60" width="90" height="20" rx="4" fill="rgba(137,180,250,0.12)" stroke="rgba(137,180,250,0.3)"/>
+      <text x="350" y="74" text-anchor="middle" fill="#89b4fa" font-size="9" font-weight="600">Entra ID only</text>
+      <line x1="290" y1="82" x2="305" y2="72" stroke="rgba(137,180,250,0.4)" stroke-width="1"/>
+      <!-- Models Account Box -->
+      <rect x="310" y="175" width="105" height="70" rx="8" fill="#2a2a3d" stroke="#94e2d5" stroke-width="2"/>
+      <text x="362" y="198" text-anchor="middle" fill="#94e2d5" font-size="11" font-weight="700">Models Acct</text>
+      <text x="362" y="214" text-anchor="middle" fill="#cdd6f4" font-size="10">Canada East</text>
+      <text x="362" y="228" text-anchor="middle" fill="#9399b2" font-size="9">GPT-4.1 · Ada-002</text>
+      <text x="362" y="240" text-anchor="middle" fill="#9399b2" font-size="9">Embed-3-Large</text>
+      <!-- Arrow down from CU -->
+      <line x1="165" y1="150" x2="165" y2="190" stroke="#89b4fa" stroke-width="2" marker-end="url(#arrow-cu)"/>
+      <!-- Rich Output Box -->
+      <rect x="55" y="190" width="220" height="50" rx="6" fill="#2a2a3d" stroke="#3b3b52"/>
+      <text x="165" y="210" text-anchor="middle" fill="#cdd6f4" font-size="11">Fields · Tables · Summaries</text>
+      <text x="165" y="228" text-anchor="middle" fill="#9399b2" font-size="10">Markdown · Embeddings · Classifications</text>
+      <!-- Multimodal callout -->
+      <rect x="55" y="252" width="220" height="22" rx="4" fill="rgba(203,166,247,0.1)" stroke="rgba(203,166,247,0.25)"/>
+      <text x="165" y="267" text-anchor="middle" fill="#cba6f7" font-size="10">📄 PDF  🖼️ Images  🎵 Audio  🎬 Video</text>
+      <defs>
+        <marker id="arrow-cu" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="none" stroke="#89b4fa" stroke-width="1.5"/>
+        </marker>
+        <marker id="arrow-teal" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="none" stroke="#94e2d5" stroke-width="1.5"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 2: Analyzer Taxonomy -->
+<!-- ============================================================ -->
+<section id="taxonomy">
+<h2>CU Analyzer Taxonomy</h2>
+<p style="color:var(--text-muted); margin-bottom:0.5rem; font-size:0.9rem;">
+  CU uses <strong>analyzers</strong> (not &ldquo;models&rdquo; like DI). They fall into three tiers based on whether an LLM or embedding model is needed. Click each tier to see examples.
+  <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/analyzers" target="_blank">CU analyzer concepts</a> · <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-model-overview" target="_blank">DI model overview</a></span>
+</p>
+
+<div class="tier-list">
+  <!-- Tier 1 -->
+  <details class="tier-card" open>
+    <summary>
+      <span class="badge badge-nollm">No LLM</span>
+      Tier 1 — Content-Only Analyzers
+    </summary>
+    <div class="tier-body">
+      <p>Pure OCR extraction. No model call needed — equivalent to DI's basic capabilities.</p>
+      <ul>
+        <li><code>prebuilt-read</code> — plain text extraction · <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-read" target="_blank">DI Read model</a></li>
+        <li><code>prebuilt-layout</code> — text + tables + structure · <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-layout" target="_blank">DI Layout model</a></li>
+      </ul>
+      <p class="tier-note">These work identically whether or not the Models account has any deployments.</p>
+    </div>
+  </details>
+
+  <!-- Tier 2 -->
+  <details class="tier-card">
+    <summary>
+      <span class="badge badge-nollm">No LLM</span>
+      Tier 2 — Domain-Specific Analyzers
+    </summary>
+    <div class="tier-body">
+      <p>Pre-trained ML extraction for specific document types. No LLM needed — similar to DI prebuilt models.</p>
+      <ul>
+        <li><code>prebuilt-invoice</code> — invoices · <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-invoice" target="_blank">DI Invoice model</a></li>
+        <li><code>prebuilt-receipt</code> — receipts · <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-receipt" target="_blank">DI Receipt model</a></li>
+        <li><code>prebuilt-document</code> — general key-value pair extraction</li>
+      </ul>
+      <p class="tier-note">Fixed output schema defined by Microsoft — you cannot add custom fields to these. <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-model-overview" target="_blank">Full list of DI prebuilt models →</a></p>
+    </div>
+  </details>
+
+  <!-- Tier 3 -->
+  <details class="tier-card">
+    <summary>
+      <span class="badge badge-llm">GPT + Embeddings</span>
+      Tier 3 — LLM-Powered Analyzers
+    </summary>
+    <div class="tier-body">
+      <p>Require GPT and/or embedding model deployments in the Models account. This is what makes CU different from DI.</p>
+      <ul>
+        <li><code>prebuilt-documentSearch</code> — RAG-ready document search with embeddings</li>
+        <li><code>prebuilt-imageSearch</code> — image-based semantic search</li>
+        <li><code>prebuilt-audioSearch</code> — audio transcription + search</li>
+        <li><code>prebuilt-videoSearch</code> — video understanding + search</li>
+        <li><strong>Custom analyzers</strong> — user-defined schemas with <code>extract</code>, <code>generate</code>, or <code>classify</code> field methods · <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/create-custom-analyzers" target="_blank">Create custom analyzers →</a></li>
+      </ul>
+      <p class="tier-note">
+        <strong>Prebuilt search analyzers</strong> resolve models via the <code>PATCH /defaults</code> endpoint
+        (<code>prebuilt-analyzer-completion</code>, <code>prebuilt-analyzer-embedding</code>).<br>
+        <strong>Custom analyzers</strong> specify models in their JSON <code>"models"</code> block.
+      </p>
+    </div>
+  </details>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 3: Model Routing Flow -->
+<!-- ============================================================ -->
+<section id="routing">
+<h2>Model Routing Flow</h2>
+<p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+  The critical difference: how each service resolves which model (if any) to call when processing a document.
+  <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/rest/api/contentunderstanding/analyzers/analyze" target="_blank">CU Analyze API</a> · <a href="https://learn.microsoft.com/en-us/rest/api/aiservices/document-models/analyze-document" target="_blank">DI Analyze API</a></span>
+</p>
+
+<div class="routing-grid">
+  <!-- CU Flow -->
+  <div class="routing-col">
+    <h3><span class="badge badge-cu">CU</span> Content Understanding</h3>
+    <div class="flow-diagram"><span class="hl-blue">User uploads doc</span> → <span class="hl-blue">CU Endpoint</span> (Canada Central)
+│
+├─ <span class="hl-green">Content-only</span> (prebuilt-read / layout)
+│  └─ OCR only — <span class="hl-muted">no model call</span>
+│
+├─ <span class="hl-green">Domain-specific</span> (prebuilt-invoice)
+│  └─ Pre-trained ML — <span class="hl-muted">no model call</span>
+│
+├─ <span class="hl-yellow">Prebuilt search</span> (prebuilt-documentSearch)
+│  ├─ CU reads defaults:
+│  │  <span class="hl-peach">prebuilt-analyzer-completion</span> → <span class="hl-teal">gpt-41</span>
+│  │  <span class="hl-peach">prebuilt-analyzer-embedding</span> → <span class="hl-teal">text-embedding-3-large</span>
+│  └─ Calls <span class="hl-teal">Models Account</span> (Canada East)
+│     via <span class="hl-mauve">managed identity</span>
+│
+└─ <span class="hl-yellow">Custom analyzer</span> (user-defined schema)
+   ├─ Reads <span class="hl-peach">"models"</span> block from analyzer JSON:
+   │  <span class="hl-peach">completion</span> → <span class="hl-teal">gpt-41-mini-ca</span>
+   └─ Calls <span class="hl-teal">Models Account</span> (Canada East)
+      via <span class="hl-mauve">managed identity</span></div>
+  </div>
+
+  <!-- DI Flow -->
+  <div class="routing-col">
+    <h3><span class="badge badge-di">DI</span> Document Intelligence</h3>
+    <div class="flow-diagram"><span class="hl-blue">User uploads doc</span> → <span class="hl-blue">DI Endpoint</span>
+│
+└─ <span class="hl-green">prebuilt-invoice / layout / read</span>
+   │
+   └─ Fixed extraction
+      Returns structured fields
+      <span class="hl-muted">No LLM · No embeddings</span>
+      <span class="hl-muted">No custom schemas</span>
+      <span class="hl-muted">No model routing</span>
+
+
+
+
+<span class="hl-muted">┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄</span>
+<span class="hl-muted">API pattern:</span>
+<span class="hl-blue">POST</span> /documentintelligence/
+     documentModels/{modelId}:analyze
+
+<span class="hl-muted">Auth:</span> Entra ID <span class="hl-muted">or</span> API key</div>
+  </div>
+</div>
+
+<p style="color:var(--text-muted); margin-top:1rem; font-size:0.85rem;">
+  <strong>CU API pattern:</strong> <code style="background:rgba(137,180,250,0.1); padding:0.1rem 0.35rem; border-radius:3px; color:var(--teal); font-size:0.82rem;">POST /contentunderstanding/analyzers/{analyzerId}:analyze</code>
+  &nbsp;·&nbsp; <strong>Auth:</strong> Entra ID only (API keys disabled in our deployment)
+</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 4: Defaults Mapping Reference -->
+<!-- ============================================================ -->
+<section id="defaults">
+<h2>PATCH Defaults — Model Deployment Mapping</h2>
+<p style="color:var(--text-muted); margin-bottom:0.5rem; font-size:0.9rem;">
+  The <code style="background:rgba(137,180,250,0.1); padding:0.1rem 0.3rem; border-radius:3px; color:var(--teal); font-size:0.82rem;">PATCH /contentunderstanding/defaults</code> call maps logical model names to physical deployments in the Models account. This is the full mapping from our <code style="color:var(--text-muted)">defaults-body.json</code>:
+  <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/rest/api/contentunderstanding/defaults" target="_blank">CU Defaults REST API</a> · <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/bring-your-own-cross-resource-capacity" target="_blank">Cross-resource capacity setup</a></span>
+</p>
+
+<table class="defaults-table">
+  <thead>
+    <tr>
+      <th>Logical Name (Key)</th>
+      <th>Physical Deployment (Value)</th>
+      <th>Category</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="key">gpt-4.1</td><td class="val">yourconnectionname/gpt-41</td><td class="cat">Named — completion</td></tr>
+    <tr><td class="key">gpt-4.1-mini</td><td class="val">yourconnectionname/gpt-41-mini</td><td class="cat">Named — completion</td></tr>
+    <tr><td class="key">gpt-4.1-mini-ca</td><td class="val">yourconnectionname/gpt-41-mini-ca</td><td class="cat">Named — completion (Canada)</td></tr>
+    <tr><td class="key">gpt-4o</td><td class="val">yourconnectionname/gpt-4o-ca</td><td class="cat">Named — completion</td></tr>
+    <tr><td class="key">gpt-4o-ca</td><td class="val">yourconnectionname/gpt-4o-ca</td><td class="cat">Named — completion (Canada)</td></tr>
+    <tr><td class="key">text-embedding-ada-002</td><td class="val">yourconnectionname/text-embedding-ada-002</td><td class="cat">Named — embedding</td></tr>
+    <tr><td class="key">text-embedding-3-large</td><td class="val">yourconnectionname/text-embedding-3-large</td><td class="cat">Named — embedding</td></tr>
+    <tr class="divider"><td class="key">text-embedding-3-small</td><td class="val">yourconnectionname/text-embedding-3-small</td><td class="cat">Named — embedding</td></tr>
+    <tr><td class="key" style="color:var(--peach);">prebuilt-analyzer-completion</td><td class="val">yourconnectionname/gpt-41</td><td class="cat">Prebuilt default — completion</td></tr>
+    <tr><td class="key" style="color:var(--peach);">prebuilt-analyzer-embedding</td><td class="val">yourconnectionname/text-embedding-3-large</td><td class="cat">Prebuilt default — embedding</td></tr>
+    <tr><td class="key" style="color:var(--peach);">prebuilt-analyzer-completion-mini</td><td class="val">yourconnectionname/gpt-41-mini</td><td class="cat">Prebuilt default — completion (mini)</td></tr>
+  </tbody>
+</table>
+
+<p style="color:var(--text-muted); margin-top:0.75rem; font-size:0.82rem;">
+  <span style="color:var(--peach);">■</span> <strong>Prebuilt defaults</strong> (bottom 3) are used internally by CU for prebuilt analyzers that need LLM/embedding. The user never sees these in analyzer JSON — CU reads them from the defaults endpoint.<br>
+  <span style="color:var(--blue);">■</span> <strong>Named deployments</strong> (top 8) are referenced explicitly in custom analyzer <code style="background:rgba(137,180,250,0.1); padding:0.1rem 0.3rem; border-radius:3px; color:var(--teal); font-size:0.82rem;">"models"</code> blocks.
+</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 5: Capability Comparison -->
+<!-- ============================================================ -->
+<section id="comparison">
+<h2>Capability Comparison</h2>
+
+<table class="compare-table">
+  <thead>
+    <tr>
+      <th style="width:22%;">Aspect</th>
+      <th style="width:35%;">Document Intelligence (DI)</th>
+      <th style="width:43%;">Content Understanding (CU)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="aspect">Resources</td>
+      <td class="di-val">1 account</td>
+      <td class="cu-val cu-highlight">2 accounts (CU + Models)</td>
+    </tr>
+    <tr>
+      <td class="aspect">Terminology</td>
+      <td class="di-val">"Models" (prebuilt-layout, etc.)</td>
+      <td class="cu-val">"Analyzers" (prebuilt + custom)</td>
+    </tr>
+    <tr>
+      <td class="aspect">LLM Integration</td>
+      <td class="di-val">None</td>
+      <td class="cu-val cu-highlight">GPT-4.1 / GPT-4o for generate, classify, summarize</td>
+    </tr>
+    <tr>
+      <td class="aspect">Embedding Integration</td>
+      <td class="di-val">None</td>
+      <td class="cu-val cu-highlight">Ada-002 / Embed-3-Large for RAG &amp; search</td>
+    </tr>
+    <tr>
+      <td class="aspect">Custom Schemas</td>
+      <td class="di-val">No — fixed output per model</td>
+      <td class="cu-val cu-highlight">Yes — define fields with extract / generate / classify</td>
+    </tr>
+    <tr>
+      <td class="aspect">Model Routing</td>
+      <td class="di-val">N/A</td>
+      <td class="cu-val cu-highlight">Defaults PATCH maps analyzer needs → deployments</td>
+    </tr>
+    <tr>
+      <td class="aspect">Cross-Resource Auth</td>
+      <td class="di-val">N/A</td>
+      <td class="cu-val cu-highlight">CU → Models via managed identity (RBAC)</td>
+    </tr>
+    <tr>
+      <td class="aspect">Multimodal</td>
+      <td class="di-val">Documents + images</td>
+      <td class="cu-val cu-highlight">Documents + images + audio + video</td>
+    </tr>
+    <tr>
+      <td class="aspect">RAG Support</td>
+      <td class="di-val">No</td>
+      <td class="cu-val cu-highlight">Yes — prebuilt-documentSearch, imageSearch, etc.</td>
+    </tr>
+    <tr>
+      <td class="aspect">Auth Options</td>
+      <td class="di-val">Entra ID or API key</td>
+      <td class="cu-val">Entra ID only (API keys disabled in our deployment)</td>
+    </tr>
+    <tr>
+      <td class="aspect">Output</td>
+      <td class="di-val">Fields, tables, KV pairs, bounding boxes</td>
+      <td class="cu-val cu-highlight">All of DI + summaries, markdown, embeddings, classifications</td>
+    </tr>
+  </tbody>
+</table>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 6: Data Residency -->
+<!-- ============================================================ -->
+<section id="residency">
+<h2>Data Residency</h2>
+<p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+  Model deployment type determines whether inference data stays within Canada. This matters for regulated workloads.
+  <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment" target="_blank">Azure OpenAI deployment types</a> · <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#global-standard" target="_blank">Global Standard vs Standard</a></span>
+</p>
+
+<div class="residency-grid">
+  <div class="residency-card">
+    <h3>🍁 Standard <span class="badge badge-std">Canada Guaranteed</span></h3>
+    <p>Inference stays in the deployed region (Canada East). Use for data-sovereign workloads.</p>
+    <ul class="deploy-list">
+      <li><code>gpt-41-mini-ca</code> — GPT-4.1 Mini Standard (Canada East)</li>
+      <li><code>gpt-4o-ca</code> — GPT-4o Standard (Canada East)</li>
+      <li><code>text-embedding-ada-002</code> — Ada 002 (Canada East)</li>
+      <li><code>text-embedding-3-large</code> — Embedding 3 Large (Canada East)</li>
+      <li><code>text-embedding-3-small</code> — Embedding 3 Small (Canada East)</li>
+    </ul>
+  </div>
+
+  <div class="residency-card global">
+    <h3>🌐 Global Standard <span class="badge badge-global">May Leave Canada</span></h3>
+    <p>Inference may be routed outside Canada for capacity. Higher throughput, lower cost per token.</p>
+    <ul class="deploy-list">
+      <li><code>gpt-41</code> — GPT-4.1 Global Standard</li>
+      <li><code>gpt-41-mini</code> — GPT-4.1 Mini Global Standard</li>
+    </ul>
+    <p style="font-size:0.82rem; color:var(--yellow); margin-top:0.5rem;">
+      ⚠ Prebuilt analyzer defaults currently point to Global Standard deployments (gpt-41, text-embedding-3-large).
+      For full Canada residency, update defaults to use the <code>-ca</code> variants.
+    </p>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION 7: MS Learn Documentation Links -->
+<!-- ============================================================ -->
+<section id="docs">
+<h2>Microsoft Learn Documentation</h2>
+<p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+  Key reference links for workshop prep and deep-dives.
+</p>
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+  <div>
+    <h3 style="color:var(--blue); margin-bottom:0.5rem;">Content Understanding (CU)</h3>
+    <ul style="list-style:none; padding:0; font-size:0.88rem;">
+      <li style="padding:0.3rem 0;">📄 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/overview" target="_blank">CU Overview</a></li>
+      <li style="padding:0.3rem 0;">🔧 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/concepts/analyzers" target="_blank">Analyzer concepts</a></li>
+      <li style="padding:0.3rem 0;">📝 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/create-custom-analyzers" target="_blank">Create custom analyzers</a></li>
+      <li style="padding:0.3rem 0;">🔗 <a href="https://learn.microsoft.com/en-us/azure/ai-services/content-understanding/how-to/bring-your-own-cross-resource-capacity" target="_blank">Cross-resource capacity setup</a></li>
+      <li style="padding:0.3rem 0;">📡 <a href="https://learn.microsoft.com/en-us/rest/api/contentunderstanding/operation-groups" target="_blank">CU REST API reference</a></li>
+      <li style="padding:0.3rem 0;">📡 <a href="https://learn.microsoft.com/en-us/rest/api/contentunderstanding/defaults" target="_blank">Defaults API (PATCH)</a></li>
+      <li style="padding:0.3rem 0;">🖥️ <a href="https://aka.ms/cu-studio" target="_blank">Content Understanding Studio</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="color:var(--text-muted); margin-bottom:0.5rem;">Document Intelligence (DI)</h3>
+    <ul style="list-style:none; padding:0; font-size:0.88rem;">
+      <li style="padding:0.3rem 0;">📄 <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/overview" target="_blank">DI Overview</a></li>
+      <li style="padding:0.3rem 0;">🔧 <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-model-overview" target="_blank">Model overview (all prebuilts)</a></li>
+      <li style="padding:0.3rem 0;">📐 <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-layout" target="_blank">Layout model</a></li>
+      <li style="padding:0.3rem 0;">🧾 <a href="https://learn.microsoft.com/en-us/azure/ai-services/document-intelligence/concept-invoice" target="_blank">Invoice model</a></li>
+      <li style="padding:0.3rem 0;">📡 <a href="https://learn.microsoft.com/en-us/rest/api/aiservices/document-models/analyze-document" target="_blank">DI Analyze REST API</a></li>
+      <li style="padding:0.3rem 0;">🖥️ <a href="https://documentintelligence.ai.azure.com/studio" target="_blank">Document Intelligence Studio</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="color:var(--teal); margin-bottom:0.5rem;">Identity &amp; Security</h3>
+    <ul style="list-style:none; padding:0; font-size:0.88rem;">
+      <li style="padding:0.3rem 0;">🔑 <a href="https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview" target="_blank">Managed identities overview</a></li>
+      <li style="padding:0.3rem 0;">🛡️ <a href="https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential" target="_blank">DefaultAzureCredential (.NET)</a></li>
+      <li style="padding:0.3rem 0;">👤 <a href="https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles#cognitive-services-user" target="_blank">Cognitive Services User role</a></li>
+    </ul>
+  </div>
+  <div>
+    <h3 style="color:var(--yellow); margin-bottom:0.5rem;">Azure OpenAI Models</h3>
+    <ul style="list-style:none; padding:0; font-size:0.88rem;">
+      <li style="padding:0.3rem 0;">🤖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment" target="_blank">Models &amp; deployment types</a></li>
+      <li style="padding:0.3rem 0;">🌐 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#global-standard" target="_blank">Global Standard vs Standard</a></li>
+      <li style="padding:0.3rem 0;">🍁 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#model-summary-table-and-region-availability" target="_blank">Region availability</a></li>
+    </ul>
+  </div>
+</div>
+</section>
+
+<footer>
+  CU vs DI Architecture Reference — Azure AI Content Understanding Workshop
+</footer>
+
+</body>
+</html>

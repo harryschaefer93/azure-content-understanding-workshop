@@ -1,0 +1,457 @@
+@page "/analyze"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using Microsoft.Extensions.Options
+@inject ContentUnderstandingService CuService
+@inject IOptions<ContentUnderstandingOptions> Options
+@inject ModelProfileState ProfileState
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Analyze — CU Test Harness</PageTitle>
+
+<div class="container">
+    <h1>Content Understanding Test Harness</h1>
+    <div class="model-banner">
+        <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
+        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+        { <span class="badge-residency">🍁 Canada</span> }
+        else
+        { <span class="badge-global">🌐 Global</span> }
+    </div>
+    <p class="subtitle">Upload a file and analyze it with Azure AI Content Understanding.</p>
+
+    <div class="upload-section">
+        <div class="upload-area @(_isDragOver ? "drag-over" : "")"
+             @ondragenter="@(() => _isDragOver = true)"
+             @ondragleave="@(() => _isDragOver = false)"
+             @ondragover:preventDefault>
+            <InputFile OnChange="OnFileSelected"
+                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx,.mp3,.mp4,.wav,.webm"
+                       @ref="_inputFile" />
+            <div class="upload-prompt">
+                @if (_selectedFile is not null)
+                {
+                    <span class="file-name">@_selectedFile.Name (@FormatSize(_selectedFile.Size))</span>
+                }
+                else
+                {
+                    <span>Drag &amp; drop a file here, or <strong>click to browse</strong></span>
+                    <span class="hint">PDF, images, Office docs, audio, video — up to @(Options.Value.MaxFileSizeMB) MB</span>
+                }
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="analyzer-select">
+                <label for="analyzer">Analyzer</label>
+                <select id="analyzer" @bind="_selectedAnalyzerId">
+                    <optgroup label="Content Extraction (OCR only, no fields)">
+                        <option value="prebuilt-read">prebuilt-read</option>
+                        <option value="prebuilt-layout">prebuilt-layout</option>
+                    </optgroup>
+                    <optgroup label="Base (content only — use as parent for custom)">
+                        <option value="prebuilt-document">prebuilt-document</option>
+                    </optgroup>
+                    <optgroup label="Domain-Specific (built-in field schemas)">
+                        <option value="prebuilt-invoice">prebuilt-invoice</option>
+                        <option value="prebuilt-receipt">prebuilt-receipt</option>
+                        <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+                        <option value="prebuilt-creditCard">prebuilt-creditCard</option>
+                        <option value="prebuilt-contract">prebuilt-contract</option>
+                        <option value="prebuilt-utilityBill">prebuilt-utilityBill</option>
+                        <option value="prebuilt-payStub.us">prebuilt-payStub.us</option>
+                        <option value="prebuilt-healthInsuranceCard.us">prebuilt-healthInsuranceCard.us</option>
+                    </optgroup>
+                    <optgroup label="Utility (generic field extraction)">
+                        <option value="prebuilt-documentFields">prebuilt-documentFields</option>
+                        <option value="prebuilt-documentFieldSchema">prebuilt-documentFieldSchema</option>
+                    </optgroup>
+                    <optgroup label="RAG (LLM + Embeddings)">
+                        <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+                        <option value="prebuilt-imageSearch">prebuilt-imageSearch</option>
+                        <option value="prebuilt-audioSearch">prebuilt-audioSearch</option>
+                        <option value="prebuilt-videoSearch">prebuilt-videoSearch</option>
+                    </optgroup>
+                    @if (_customAnalyzerIds.Count > 0)
+                    {
+                        <optgroup label="Custom (from your resource)">
+                            @foreach (var id in _customAnalyzerIds)
+                            {
+                                <option value="@id">@id</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+                @if (_useCustomId)
+                {
+                    <input type="text" @bind="_selectedAnalyzerId" placeholder="Type custom analyzer ID" />
+                }
+                <label class="custom-toggle">
+                    <input type="checkbox" @bind="_useCustomId" /> Use custom ID
+                </label>
+            </div>
+
+            <button class="btn-analyze" @onclick="RunAnalysis" disabled="@(_selectedFile is null || _isAnalyzing)">
+                @if (_isAnalyzing)
+                {
+                    <span class="spinner"></span> <span>Analyzing…</span>
+                }
+                else
+                {
+                    <span>Analyze</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (_result is not null)
+    {
+        <div class="@(_showViewer ? "split-layout" : "")">
+            @if (_showViewer)
+            {
+                <div class="split-layout-viewer">
+                    <CU_TestHarness.Components.Shared.DocumentViewer
+                        FileBytes="_cachedFileBytes"
+                        ContentType="@(_selectedFile?.ContentType ?? "")"
+                        Fields="_result.Fields"
+                        Pages="_result.Pages"
+                        HighlightedFieldName="@_highlightedField"
+                        OnFieldClicked="OnViewerFieldClicked" />
+                </div>
+            }
+            <div class="@(_showViewer ? "split-layout-results" : "")">
+        <div class="results-section">
+            <div class="result-header">
+                <h2>Results</h2>
+                @if (_result.Fields.Count > 0)
+                {
+                    <span class="field-count-badge">@_result.Fields.Count fields</span>
+                }
+                <span class="status @_result.Status.ToLowerInvariant()">@_result.Status</span>
+                @if (_result.Duration.HasValue)
+                {
+                    <span class="duration">@_result.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                }
+            </div>
+
+            @if (_result.Cost is not null)
+            {
+                <div class="cost-card @GetCostClass(_result.Cost.EstimatedCost)">
+                    <span class="cost-amount">~$@_result.Cost.EstimatedCost.ToString("F4")</span>
+                    <span class="cost-detail">@_result.Cost.CostBreakdown</span>
+                    @if (_result.PageCount.HasValue)
+                    {
+                        <span class="cost-detail">Pages: @_result.PageCount</span>
+                    }
+                    @if (_result.TokensUsed.HasValue)
+                    {
+                        <span class="cost-detail">Tokens: @_result.TokensUsed</span>
+                    }
+                </div>
+            }
+
+            @if (_result.ErrorMessage is not null)
+            {
+                <div class="error-box">
+                    <pre>@_result.ErrorMessage</pre>
+                </div>
+            }
+            else
+            {
+                <div class="tabs">
+                    <button class="tab @(_activeTab == "fields" ? "active" : "")" @onclick='() => _activeTab = "fields"'>Fields</button>
+                    <button class="tab @(_activeTab == "json" ? "active" : "")" @onclick='() => _activeTab = "json"'>Raw JSON</button>
+                    <button class="tab @(_activeTab == "markdown" ? "active" : "")" @onclick='() => _activeTab = "markdown"'>Markdown</button>
+                </div>
+
+                <div class="tab-content">
+                    @if (_activeTab == "fields")
+                    {
+                        @if (_result.Fields.Count > 0)
+                        {
+                            <table class="fields-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field</th>
+                                        <th>Value</th>
+                                        <th>Type</th>
+                                        <th>Confidence</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var field in _result.Fields)
+                                    {
+                                        var fname = field.Name;
+                                        <tr class="@(_highlightedField == fname ? "field-highlighted" : "")"
+                                            data-field="@fname"
+                                            @onclick="() => _highlightedField = _highlightedField == fname ? null : fname"
+                                            style="cursor:pointer;">
+                                            <td class="field-name">@field.Name</td>
+                                            <td>@(field.Value ?? "—")</td>
+                                            <td class="field-type">@(field.Type ?? "—")</td>
+                                            <td class="field-confidence">
+                                                @if (field.Confidence.HasValue)
+                                                {
+                                                    <span class="@GetConfidenceClass(field.Confidence.Value)">@($"{field.Confidence.Value:P0}")</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>—</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <p class="no-data">No structured fields returned. Try a domain-specific analyzer (e.g. prebuilt-invoice) or a custom analyzer with a field schema.</p>
+                        }
+                    }
+                    else if (_activeTab == "json")
+                    {
+                        <div class="json-wrapper">
+                            <button class="btn-copy-json @(_jsonCopied ? "copied" : "")" @onclick="CopyJson">@(_jsonCopied ? "Copied!" : "Copy")</button>
+                            <pre class="json-output">@(_result.RawJson ?? "No response body.")</pre>
+                        </div>
+                    }
+                    else if (_activeTab == "markdown")
+                    {
+                        <pre class="markdown-output">@(_result.Markdown ?? "No markdown content returned.")</pre>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ── UC4: Natural Language Query ── *@
+    @if (_result is not null && _result.Status == "Succeeded" && _cachedFileBytes is not null)
+    {
+        <div class="nl-query-section">
+            <h3>Ask a Question (UC4)</h3>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.5rem;">
+                Ask a natural-language question about this document. CU will create a temporary <code>generate</code>-method field to answer it.
+            </p>
+            <div class="nl-query-input">
+                <input type="text" @bind="_nlQuestion" @bind:event="oninput"
+                       placeholder="e.g. What are the key obligations of the borrower?"
+                       @onkeydown="NlKeyDown" />
+                <button class="btn-analyze" @onclick="RunNlQuery"
+                        disabled="@(string.IsNullOrWhiteSpace(_nlQuestion) || _nlQuerying)">
+                    @if (_nlQuerying) { <span class="spinner"></span> } Ask
+                </button>
+            </div>
+            @if (_nlAnswer is not null)
+            {
+                <div class="nl-query-answer">
+                    <strong>Answer:</strong>
+                    <p>@_nlAnswer</p>
+                </div>
+            }
+            @if (_nlError is not null)
+            {
+                <div class="error-box"><pre>@_nlError</pre></div>
+            }
+        </div>
+    }
+            </div>@* close inner wrapper *@
+        </div>@* close split-layout *@
+    }
+</div>
+
+@code {
+    private InputFile? _inputFile;
+    private IBrowserFile? _selectedFile;
+    private string _selectedAnalyzerId = "";
+    private bool _isAnalyzing;
+    private bool _isDragOver;
+    private bool _useCustomId;
+    private string _activeTab = "fields";
+    private AnalysisViewModel? _result;
+    private List<string> _customAnalyzerIds = [];
+    private byte[]? _cachedFileBytes;
+    private string? _highlightedField;
+
+    private bool _jsonCopied;
+
+    // NL Query (UC4)
+    private string _nlQuestion = "";
+    private string? _nlAnswer;
+    private string? _nlError;
+    private bool _nlQuerying;
+
+    private bool _showViewer => _result is not null && _cachedFileBytes is not null &&
+        (_selectedFile?.ContentType?.Contains("pdf") == true ||
+         _selectedFile?.ContentType?.StartsWith("image/") == true);
+
+    private async Task OnViewerFieldClicked(string fieldName)
+    {
+        _highlightedField = fieldName;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("harnessInterop.scrollToFieldRow", fieldName);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedAnalyzerId = Options.Value.DefaultAnalyzerId;
+        var all = await CuService.ListAnalyzerIdsAsync();
+        _customAnalyzerIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _result = null;
+        _cachedFileBytes = null;
+        _nlAnswer = null;
+        _nlError = null;
+        _isDragOver = false;
+    }
+
+    private async Task RunAnalysis()
+    {
+        if (_selectedFile is null || string.IsNullOrWhiteSpace(_selectedAnalyzerId))
+            return;
+
+        _isAnalyzing = true;
+        _result = null;
+        StateHasChanged();
+
+        try
+        {
+            var maxSize = Options.Value.MaxFileSizeMB * 1024L * 1024L;
+            await using var stream = _selectedFile.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _cachedFileBytes = ms.ToArray();
+            ms.Position = 0;
+
+            _result = await CuService.AnalyzeFileAsync(
+                _selectedAnalyzerId,
+                ms,
+                _selectedFile.Name,
+                _selectedFile.ContentType);
+        }
+        catch (Exception ex)
+        {
+            _result = new AnalysisViewModel
+            {
+                AnalyzerId = _selectedAnalyzerId,
+                FileName = _selectedFile.Name,
+                Status = "Failed",
+                ErrorMessage = ex.Message
+            };
+        }
+        finally
+        {
+            _isAnalyzing = false;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string GetCostClass(decimal cost) =>
+        cost < 0.01m ? "cost-green" : cost < 0.10m ? "cost-yellow" : "cost-orange";
+
+    private static string GetConfidenceClass(double confidence) =>
+        confidence >= 0.80 ? "confidence-high" : confidence >= 0.60 ? "confidence-mid" : "confidence-low";
+
+    private async Task CopyJson()
+    {
+        if (_result?.RawJson is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", _result.RawJson);
+        _jsonCopied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _jsonCopied = false;
+    }
+
+    private async Task NlKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_nlQuestion) && !_nlQuerying)
+            await RunNlQuery();
+    }
+
+    private async Task RunNlQuery()
+    {
+        if (string.IsNullOrWhiteSpace(_nlQuestion) || _cachedFileBytes is null || _selectedFile is null) return;
+
+        _nlQuerying = true;
+        _nlAnswer = null;
+        _nlError = null;
+        StateHasChanged();
+
+        var tempId = $"nlq{Guid.NewGuid():N}"[..32]; // max 32 chars, must start with letter
+        try
+        {
+            // Build a minimal analyzer with one "generate" field for the question
+            var safeQuestion = _nlQuestion.Replace("\"", "'").Replace("\n", " ").Replace("\r", "");
+            var profile = ProfileState.ActiveProfile;
+            var analyzerJson = $$"""
+            {
+                "analyzerId": "{{tempId}}",
+                "baseAnalyzerId": "prebuilt-document",
+                "models": {
+                    "completion": "{{profile.CompletionModelName}}",
+                    "embedding": "{{profile.EmbeddingModelName}}"
+                },
+                "fieldSchema": {
+                    "fields": {
+                        "Answer": {
+                            "type": "string",
+                            "method": "generate",
+                            "description": "{{safeQuestion}}"
+                        }
+                    }
+                }
+            }
+            """;
+
+            var (created, createErr) = await CuService.CreateOrUpdateAnalyzerAsync(analyzerJson, allowReplace: true);
+            if (!created)
+            {
+                _nlError = $"Failed to create temp analyzer: {createErr}";
+                return;
+            }
+
+            // New analyzers need a moment to provision; retry on ScenarioNotReady
+            AnalysisViewModel? result = null;
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(3000);
+                using var ms = new MemoryStream(_cachedFileBytes);
+                result = await CuService.AnalyzeFileAsync(tempId, ms, _selectedFile.Name, _selectedFile.ContentType);
+                if (result.Status == "Succeeded" || result.ErrorMessage?.Contains("ScenarioNotReady") != true)
+                    break;
+            }
+
+            if (result!.Status == "Succeeded")
+            {
+                var answerField = result.Fields.FirstOrDefault(f =>
+                    string.Equals(f.Name, "Answer", StringComparison.OrdinalIgnoreCase));
+                _nlAnswer = answerField?.Value ?? "No answer returned.";
+            }
+            else
+            {
+                _nlError = result.ErrorMessage ?? "Analysis failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _nlError = ex.Message;
+        }
+        finally
+        {
+            // Clean up temp analyzer (best-effort)
+            _ = CuService.DeleteAnalyzerAsync(tempId);
+            _nlQuerying = false;
+        }
+    }
+}

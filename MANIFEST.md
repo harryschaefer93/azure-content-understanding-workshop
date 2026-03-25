@@ -1,0 +1,71 @@
+# Project Manifest — Azure Content Understanding Workshop
+
+> **Last updated:** 2026-03-24
+
+## Overview
+
+Workshop accelerator for Azure AI Content Understanding (CU) and Document Intelligence (DI). Includes Terraform IaC, a Blazor Server test harness with 6 use cases, a C# Polyglot Notebook, and synthetic sample documents. All authentication uses Microsoft Entra ID (API keys disabled).
+
+> **Copilot:** See [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for session rules.
+
+---
+
+## Repository Layout
+
+| Path | Purpose | Status |
+|------|---------|--------|
+| `infra/deploy.tf` | Terraform — CU + Models accounts + RBAC + 7 model deployments | Done |
+| `infra/defaults-body.json` | PATCH body for CU model routing defaults | Done |
+| `infra/terraform.tfvars.example` | Example variable values | Done |
+| `src/CU_TestHarness/` | Blazor Server test harness — 11 pages, 6 workshop UCs | Done |
+| `src/CU_TestHarness.Tests/` | xUnit unit tests (32 tests) | Done |
+| `notebook/CU-API-Testing-Guide.ipynb` | C# Polyglot Notebook — full CU REST API walkthrough | Done |
+| `sample-docs/` | Synthetic PDFs (5 commitment letters, 2 title searches) + test manifests | Done |
+
+## Blazor Test Harness Features
+
+- **Home** (`/`) — UC1–UC6 tile dashboard
+- **Analyze** (`/analyze`) — file upload, field extraction, PDF viewer with bounding box overlays, NL query (UC4)
+- **Validate** (`/validate`) — multi-document validation with 3-pass field matching (UC5)
+- **Test Suite** (`/test`) — batch testing with expected values, auto-populate, semantic matching (UC3)
+- **Compare** (`/compare`) — CU vs DI side-by-side analysis
+- **Schema Builder** (`/schema-builder`) — upload samples, auto-detect fields, generate + create analyzer (UC1)
+- **Schema Editor** (`/schema-editor`) — template-based creation, browse/edit/delete analyzers (UC2)
+- **Feedback** (`/feedback`) — edit field descriptions + re-analyze to verify improvement (UC6)
+- **Settings** (`/settings`) — model profile selection, endpoint config, connection test
+- **Architecture** (`/architecture.html`) — CU vs DI architecture comparison reference
+
+## Model Profiles
+
+| Profile | SKU | Data Residency |
+|---------|-----|----------------|
+| GPT-4.1 Global Standard | GlobalStandard | May leave region |
+| GPT-4.1 Mini Global Standard | GlobalStandard | May leave region |
+| GPT-4.1 Mini Standard | Standard | Region-guaranteed |
+| GPT-4o Standard | Standard | Region-guaranteed |
+| Ada 002 | Standard | Region-guaranteed |
+| Embedding 3 Large | Standard | Region-guaranteed |
+| Embedding 3 Small | Standard | Region-guaranteed |
+
+## Known Issues / Decisions
+
+- **CU API template schemas**: `classify` and `generate` field methods may trigger `InvalidFieldSchema` errors. `extract`-only schemas work reliably.
+- **Custom analyzer `baseAnalyzerId`**: CU API requires root-level base IDs (`prebuilt-document`, `prebuilt-image`, etc.). Derived analyzers like `prebuilt-layout` are not valid.
+- **Analyzer ID naming**: CU API rejects hyphens (`-`). All templates use underscores (`_`). 3-layer client-side validation.
+- **CU defaults API version**: Must use `2025-11-01` (GA). Preview versions return 404 in some regions. Content-Type must be `application/json`.
+- **Foundry Portal connection**: Must be established manually before defaults PATCH works. Not automatable via IaC.
+- **GPT-4.1 Standard unavailable in Canada East**: Only GPT-4.1 Mini and GPT-4o can be deployed with Standard SKU (Canada data residency). GPT-4.1 full is Global Standard only.
+- **RBAC for developers**: `Cognitive Services User` role must be assigned on the CU resource for each user.
+- **Semantic matching**: Uses the active completion model (GPT-4.1 Mini default) via a separate Models endpoint for LLM-powered field comparison.
+- **Cost estimates**: Based on published pricing tables + actual token/page counts. Rates are hardcoded in `CostEstimator.cs`.
+- **Blazor harness runs locally**: Files are sent to Azure CU endpoint for analysis, not processed locally.
+
+---
+
+## Next Steps
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Tag cleaned repo as v1.0 | Pending |
+| 2 | UC6 corrective feedback loop via CU Studio (arriving ~April 1) | Deferred |
+| 3 | Validate cost estimates against actual workshop usage | Pending |

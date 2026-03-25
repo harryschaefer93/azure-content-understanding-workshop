@@ -1,0 +1,293 @@
+@page "/settings"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using Microsoft.Extensions.Options
+@inject IOptionsMonitor<ContentUnderstandingOptions> CuOptions
+@inject IOptionsMonitor<DocumentIntelligenceOptions> DiOptions
+@inject IConfiguration Configuration
+@inject DocumentIntelligenceService DiService
+@inject ContentUnderstandingService CuService
+@inject ModelProfileState ProfileState
+@rendermode InteractiveServer
+
+<PageTitle>Settings — CU Test Harness</PageTitle>
+
+<div class="container">
+    <h1>Settings</h1>
+
+    <!-- Completion Model -->
+    <div class="settings-card">
+        <h3>Completion Model</h3>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem;">
+            Choose the GPT model for custom analyzers.
+            <strong>Standard</strong> guarantees inference stays in the deployment region.
+            <strong>Global Standard</strong> routes to the nearest available compute globally — data may leave Canada.
+        </p>
+        <div class="model-profile-grid">
+            @foreach (var profile in CompletionProfile.Available)
+            {
+                <div class="model-profile-card @(profile.Id == _selectedCompletionId ? "active" : "")"
+                     @onclick="() => SelectCompletion(profile.Id)">
+                    <div class="model-profile-header">
+                        <strong>@profile.DisplayName</strong>
+                        @if (profile.DeploymentType == "Standard")
+                        {
+                            <span class="badge-residency" title="Inference guaranteed in region">Standard</span>
+                        }
+                        else
+                        {
+                            <span class="badge-global" title="Inference may occur outside Canada">Global Standard</span>
+                        }
+                    </div>
+                    <div class="model-profile-details">
+                        <span><strong>Model:</strong> @profile.ModelName</span>
+                        <span><strong>Deployment:</strong> @profile.DeploymentName</span>
+                        <span><strong>Region:</strong> @profile.Region</span>
+                        <span><strong>Residency:</strong> @(profile.DataResidencyGuaranteed ? "🍁 Guaranteed in Canada" : "🌐 May leave Canada")</span>
+                    </div>
+                    <div class="model-profile-specs">
+                        <span title="Maximum input context window">📏 @FormatTokenCount(profile.ContextWindow) context</span>
+                        <span title="Maximum output tokens per request">📤 @FormatTokenCount(profile.MaxOutputTokens) max output</span>
+                        @if (profile.TrainingData is not null)
+                        {
+                            <span title="Training data cutoff">📅 Training: @profile.TrainingData</span>
+                        }
+                    </div>
+                    @if (profile.Id == _selectedCompletionId)
+                    {
+                        <div class="model-profile-active-badge">✓ Active</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Embedding Model -->
+    <div class="settings-card">
+        <h3>Embedding Model</h3>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem;">
+            Choose the embedding model for RAG-based analyzers.
+        </p>
+        <div class="model-profile-grid">
+            @foreach (var profile in EmbeddingProfile.Available)
+            {
+                <div class="model-profile-card @(profile.Id == _selectedEmbeddingId ? "active" : "")"
+                     @onclick="() => SelectEmbedding(profile.Id)">
+                    <div class="model-profile-header">
+                        <strong>@profile.DisplayName</strong>
+                        <span class="badge-residency">@profile.DeploymentType</span>
+                    </div>
+                    <div class="model-profile-details">
+                        <span><strong>Model:</strong> @profile.ModelName</span>
+                        <span><strong>Deployment:</strong> @profile.DeploymentName</span>
+                        <span><strong>Region:</strong> @profile.Region</span>
+                    </div>
+                    <div class="model-profile-specs">
+                        <span title="Maximum input tokens">📏 @FormatTokenCount(profile.MaxTokens) max input</span>
+                        <span title="Output vector dimensions">📐 @profile.Dimensions.ToString("N0") dimensions</span>
+                    </div>
+                    @if (profile.Id == _selectedEmbeddingId)
+                    {
+                        <div class="model-profile-active-badge">✓ Active</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- CU Settings -->
+    <div class="settings-card">
+        <h3>Content Understanding</h3>
+        <div class="setting-row-edit">
+            <label>Endpoint</label>
+            <input type="text" @bind="_cuEndpoint" placeholder="https://your-cu-account.cognitiveservices.azure.com" />
+        </div>
+        <div class="setting-row-edit">
+            <label>Default Analyzer</label>
+            <input type="text" @bind="_cuDefaultAnalyzer" placeholder="prebuilt-documentSearch" />
+        </div>
+        <div class="setting-row-edit">
+            <label>Max File Size (MB)</label>
+            <input type="number" @bind="_cuMaxFileSizeMB" min="1" max="500" />
+        </div>
+        <div class="setting-row">
+            <label>Auth</label>
+            <code>DefaultAzureCredential (az login)</code>
+        </div>
+        <div class="settings-actions">
+            <button class="btn-analyze" @onclick="TestCuConnection" disabled="@_isCuTesting">
+                @if (_isCuTesting) { <span class="spinner"></span> } Test CU Connection
+            </button>
+            @if (_cuTestResult is not null)
+            {
+                <span class="@(_cuTestSuccess ? "text-success" : "text-error")">@_cuTestResult</span>
+            }
+        </div>
+    </div>
+
+    <!-- DI Settings -->
+    <div class="settings-card">
+        <h3>Document Intelligence (Side-by-Side)</h3>
+        <div class="setting-row-edit">
+            <label>Endpoint</label>
+            <input type="text" @bind="_diEndpoint" placeholder="https://your-di-resource.cognitiveservices.azure.com" />
+        </div>
+        <div class="setting-row">
+            <label>Auth</label>
+            <code>DefaultAzureCredential (az login)</code>
+        </div>
+        <div class="setting-row-edit">
+            <label>Default Model</label>
+            <input type="text" @bind="_diDefaultModel" placeholder="prebuilt-invoice" />
+        </div>
+        <div class="setting-row-edit">
+            <label>API Version</label>
+            <input type="text" @bind="_diApiVersion" placeholder="2024-11-30" />
+        </div>
+        <div class="settings-actions">
+            <button class="btn-analyze" @onclick="TestDiConnection" disabled="@_isTesting">
+                @if (_isTesting) { <span class="spinner"></span> } Test DI Connection
+            </button>
+            @if (_testResult is not null)
+            {
+                <span class="@(_testSuccess ? "text-success" : "text-error")">@_testResult</span>
+            }
+        </div>
+    </div>
+
+    <div class="settings-actions">
+        <button class="btn-analyze" @onclick="SaveSettings">Save Settings</button>
+        @if (_saveMessage is not null)
+        {
+            <span class="text-success">@_saveMessage</span>
+        }
+    </div>
+
+    <div class="settings-help">
+        <h3>How Settings Work</h3>
+        <p><strong>CU Endpoint</strong> changes require an app restart to take effect (the SDK client is initialized once). <strong>DI settings</strong> take effect immediately — they are passed per-request.</p>
+        <p><strong>Completion and embedding model</strong> changes take effect immediately for new analyzer creation.</p>
+
+        <h3>Model Deployment Types</h3>
+        <p><strong>Global Standard</strong> — inference is routed to the nearest Azure region with available capacity. Offers the full GPT-4.1 model but data may be processed outside Canada.</p>
+        <p><strong>Standard</strong> — inference is guaranteed to stay within the deployment region. Both embedding models, GPT-4.1 Mini, and GPT-4o are available as Standard deployments in Canada East.</p>
+
+        <h3>Authentication</h3>
+        <p>Both CU and DI use <code>DefaultAzureCredential</code>:</p>
+        <ol>
+            <li><strong>Azure CLI</strong> — run <code>az login</code> before starting the app</li>
+            <li><strong>Interactive Browser</strong> — fallback</li>
+            <li><strong>Managed Identity</strong> — for server deployment</li>
+        </ol>
+        <p>You must have the <strong>Cognitive Services User</strong> role on both resources.</p>
+    </div>
+</div>
+
+@code {
+    private string _cuEndpoint = "";
+    private string _cuDefaultAnalyzer = "";
+    private int _cuMaxFileSizeMB = 50;
+
+    private string _diEndpoint = "";
+    private string _diDefaultModel = "";
+    private string _diApiVersion = "";
+
+    private string _selectedCompletionId = "";
+    private string _selectedEmbeddingId = "";
+
+    private bool _isTesting;
+    private string? _testResult;
+    private bool _testSuccess;
+
+    private bool _isCuTesting;
+    private string? _cuTestResult;
+    private bool _cuTestSuccess;
+
+    private string? _saveMessage;
+
+    private static string FormatTokenCount(int tokens) =>
+        tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.#}M" :
+        tokens >= 1_000 ? $"{tokens / 1_000.0:0.#}K" :
+        tokens.ToString("N0");
+
+    protected override void OnInitialized()
+    {
+        var cu = CuOptions.CurrentValue;
+        _cuEndpoint = cu.Endpoint;
+        _cuDefaultAnalyzer = cu.DefaultAnalyzerId;
+        _cuMaxFileSizeMB = cu.MaxFileSizeMB;
+
+        var di = DiOptions.CurrentValue;
+        _diEndpoint = di.Endpoint;
+        _diDefaultModel = di.DefaultModelId;
+        _diApiVersion = di.ApiVersion;
+
+        _selectedCompletionId = ProfileState.ActiveCompletion.Id;
+        _selectedEmbeddingId = ProfileState.ActiveEmbedding.Id;
+    }
+
+    private void SelectCompletion(string id)
+    {
+        _selectedCompletionId = id;
+        ProfileState.SetCompletion(id);
+        _saveMessage = $"Completion model set to: {ProfileState.ActiveCompletion.DisplayName} ({ProfileState.ActiveCompletion.DeploymentType})";
+    }
+
+    private void SelectEmbedding(string id)
+    {
+        _selectedEmbeddingId = id;
+        ProfileState.SetEmbedding(id);
+        _saveMessage = $"Embedding model set to: {ProfileState.ActiveEmbedding.DisplayName}";
+    }
+
+    private void SaveSettings()
+    {
+        Configuration["DocumentIntelligence:Endpoint"] = _diEndpoint;
+        Configuration["DocumentIntelligence:DefaultModelId"] = _diDefaultModel;
+        Configuration["DocumentIntelligence:ApiVersion"] = _diApiVersion;
+
+        Configuration["ContentUnderstanding:Endpoint"] = _cuEndpoint;
+        Configuration["ContentUnderstanding:DefaultAnalyzerId"] = _cuDefaultAnalyzer;
+        Configuration["ContentUnderstanding:MaxFileSizeMB"] = _cuMaxFileSizeMB.ToString();
+
+        _saveMessage = "Settings saved (in memory). DI changes take effect immediately. CU endpoint changes require restart.";
+    }
+
+    private async Task TestCuConnection()
+    {
+        _isCuTesting = true;
+        _cuTestResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var ids = await CuService.ListAnalyzerIdsAsync();
+            _cuTestSuccess = true;
+            _cuTestResult = $"Connection successful! Found {ids.Count} analyzer(s).";
+        }
+        catch (Exception ex)
+        {
+            _cuTestSuccess = false;
+            _cuTestResult = $"Connection failed: {ex.Message}";
+        }
+        _isCuTesting = false;
+    }
+
+    private async Task TestDiConnection()
+    {
+        _isTesting = true;
+        _testResult = null;
+        StateHasChanged();
+
+        var testOptions = new DocumentIntelligenceOptions
+        {
+            Endpoint = _diEndpoint,
+            DefaultModelId = _diDefaultModel,
+            ApiVersion = _diApiVersion
+        };
+
+        _testSuccess = await DiService.TestConnectionAsync(testOptions);
+        _testResult = _testSuccess ? "Connection successful!" : "Connection failed. Check endpoint and ensure you have the Cognitive Services User role.";
+        _isTesting = false;
+    }
+}

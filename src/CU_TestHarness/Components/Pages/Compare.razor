@@ -1,0 +1,756 @@
+@page "/compare"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@using Microsoft.Extensions.Options
+@inject ContentUnderstandingService CuService
+@inject DocumentIntelligenceService DiService
+@inject IOptionsMonitor<ContentUnderstandingOptions> CuOptions
+@inject IOptionsMonitor<DocumentIntelligenceOptions> DiOptions
+@inject ModelProfileState ProfileState
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Compare — CU Test Harness</PageTitle>
+
+<div class="container compare-container">
+    <h1>Side-by-Side Comparison</h1>
+    <div class="model-banner">
+        <strong>CU Model:</strong> @ProfileState.ActiveProfile.DisplayName
+        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+        { <span class="badge-residency">🍁 Canada</span> }
+        else
+        { <span class="badge-global">🌐 Global</span> }
+    </div>
+    <p class="subtitle">Compare Content Understanding vs Document Intelligence on the same file. Raw service responses are shown side-by-side by default.</p>
+
+    @if (!_diConfigured)
+    {
+        <div class="info-banner">
+            <strong>Document Intelligence not configured.</strong>
+            <a href="/settings">Go to Settings</a> to add your DI endpoint to enable the comparison.
+            CU analysis will still work independently below.
+        </div>
+    }
+
+    <div class="upload-section">
+        <div class="upload-area @(_isDragOver ? "drag-over" : "")"
+             @ondragenter="@(() => _isDragOver = true)"
+             @ondragleave="@(() => _isDragOver = false)"
+             @ondragover:preventDefault>
+            <InputFile OnChange="OnFileSelected"
+                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx,.mp3,.mp4,.wav,.webm" />
+            <div class="upload-prompt">
+                @if (_selectedFile is not null)
+                {
+                    <span class="file-name">@_selectedFile.Name (@FormatSize(_selectedFile.Size))</span>
+                }
+                else
+                {
+                    <span>Drag &amp; drop a file here, or <strong>click to browse</strong></span>
+                    <span class="hint">PDF, images, Office docs — up to @(CuOptions.CurrentValue.MaxFileSizeMB) MB</span>
+                }
+            </div>
+        </div>
+
+        <div class="compare-controls">
+            <div class="control-col">
+                <label>CU Analyzer</label>
+                <select @bind="_cuAnalyzerId" @bind:after="OnCuAnalyzerChanged">
+                    <optgroup label="Content Extraction (OCR only, no fields)">
+                        <option value="prebuilt-read">prebuilt-read</option>
+                        <option value="prebuilt-layout">prebuilt-layout</option>
+                    </optgroup>
+                    <optgroup label="Base (content only — use as parent for custom)">
+                        <option value="prebuilt-document">prebuilt-document</option>
+                    </optgroup>
+                    <optgroup label="Domain-Specific (built-in field schemas)">
+                        <option value="prebuilt-invoice">prebuilt-invoice</option>
+                        <option value="prebuilt-receipt">prebuilt-receipt</option>
+                        <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+                        <option value="prebuilt-contract">prebuilt-contract</option>
+                    </optgroup>
+                    <optgroup label="Utility (generic field extraction)">
+                        <option value="prebuilt-documentFields">prebuilt-documentFields</option>
+                        <option value="prebuilt-documentFieldSchema">prebuilt-documentFieldSchema</option>
+                    </optgroup>
+                    <optgroup label="RAG (LLM + Embeddings)">
+                        <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+                    </optgroup>
+                    @if (_customAnalyzerIds.Count > 0)
+                    {
+                        <optgroup label="Custom">
+                            @foreach (var id in _customAnalyzerIds)
+                            {
+                                <option value="@id">@id</option>
+                            }
+                        </optgroup>
+                    }
+                </select>
+            </div>
+            <div class="control-col">
+                <label>DI Model</label>
+                @if (_diModelIds.Count > 0)
+                {
+                    <select @bind="_diModelId">
+                        @foreach (var id in _diModelIds)
+                        {
+                            @if (id == _suggestedDiModel)
+                            {
+                                <option value="@id">@id ⟵ suggested</option>
+                            }
+                            else
+                            {
+                                <option value="@id">@id</option>
+                            }
+                        }
+                    </select>
+                }
+                else
+                {
+                    <input type="text" @bind="_diModelId" placeholder="e.g. prebuilt-invoice or custom-model-id" />
+                }
+                @if (!string.IsNullOrEmpty(_suggestedDiModel))
+                {
+                    <span class="hint di-hint">Closest DI equivalent: <strong>@_suggestedDiModel</strong></span>
+                }
+            </div>
+            <button class="btn-analyze" @onclick="RunComparison" disabled="@(_selectedFile is null || _isCuAnalyzing || _isDiAnalyzing)">
+                @if (_isCuAnalyzing || _isDiAnalyzing)
+                {
+                    <span class="spinner"></span> <span>Analyzing…</span>
+                }
+                else
+                {
+                    <span>Analyze Both</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (_cuResult is not null || _diResult is not null)
+    {
+        <div class="info-banner">
+            <strong>Direct service output mode:</strong> the <em>Service Response (Raw JSON)</em> tabs show the exact API payloads side-by-side. Use <em>Extracted Fields</em> for a simplified, normalized view.
+        </div>
+
+        <div class="compare-results">
+            <!-- CU Column -->
+            <div class="compare-col">
+                <div class="col-header cu-header">
+                    <h2>Content Understanding</h2>
+                    @if (_isCuAnalyzing)
+                    {
+                        <span class="spinner dark"></span>
+                    }
+                    else if (_cuResult is not null)
+                    {
+                        <span class="status @_cuResult.Status.ToLowerInvariant()">@_cuResult.Status</span>
+                        @if (_cuResult.Duration.HasValue)
+                        {
+                            <span class="duration">@_cuResult.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                        }
+                    }
+                </div>
+
+                @if (_cuResult is not null)
+                {
+                    @if (_cuResult.Cost is not null)
+                    {
+                        <div class="cost-card @GetCostClass(_cuResult.Cost.EstimatedCost)">
+                            <span class="cost-amount">~$@_cuResult.Cost.EstimatedCost.ToString("F4")</span>
+                            <span class="cost-detail">@_cuResult.Cost.CostBreakdown</span>
+                        </div>
+                    }
+
+                    @if (_cuResult.ErrorMessage is not null)
+                    {
+                        <div class="error-box"><pre>@_cuResult.ErrorMessage</pre></div>
+                    }
+                    else
+                    {
+                        <div class="tabs">
+                            <button class="tab @(_cuTab == "json" ? "active" : "")" @onclick='() => _cuTab = "json"'>Service Response (Raw JSON)</button>
+                            <button class="tab @(_cuTab == "fields" ? "active" : "")" @onclick='() => _cuTab = "fields"'>Extracted Fields (@_cuResult.Fields.Count)</button>
+                            <button class="tab @(_cuTab == "markdown" ? "active" : "")" @onclick='() => _cuTab = "markdown"'>Markdown</button>
+                        </div>
+                        <div class="tab-content">
+                            @if (_cuTab == "json")
+                            {
+                                <div class="json-wrapper">
+                                    <button class="btn-copy-json @(_cuJsonCopied ? "copied" : "")" @onclick="CopyCuJson">@(_cuJsonCopied ? "Copied!" : "Copy")</button>
+                                    <pre class="json-output">@(_cuResult.RawJson ?? "—")</pre>
+                                </div>
+                            }
+                            else if (_cuTab == "fields")
+                            {
+                                @if (_cuResult.Fields.Count > 0)
+                                {
+                                    <table class="fields-table">
+                                        <thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var f in _cuResult.Fields)
+                                            {
+                                                <tr>
+                                                    <td class="field-name">@f.Name</td>
+                                                    <td>@(f.Value ?? "—")</td>
+                                                    <td class="field-confidence"><span class="@GetConfidenceClass(f.Confidence)">@(f.Confidence.HasValue ? $"{f.Confidence.Value:P0}" : "—")</span></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else
+                                {
+                                    @if (ContentOnlyAnalyzers.Contains(_cuAnalyzerId))
+                                    {
+                                        <p class="no-data"><strong>@_cuAnalyzerId</strong> is a content-extraction / base analyzer — it returns text and layout but no structured fields.<br/>
+                                        To extract fields, use a <strong>domain-specific</strong> prebuilt (e.g. <em>prebuilt-invoice</em>), the <strong>prebuilt-documentFields</strong> utility, or <a href="/analyzers">create a custom analyzer</a> with a <code>fieldSchema</code>.</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="no-data">No extracted fields were found. The raw service response still contains the full payload.</p>
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                <pre class="markdown-output">@(_cuResult.Markdown ?? "—")</pre>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            <!-- DI Column -->
+            <div class="compare-col">
+                <div class="col-header di-header">
+                    <h2>Document Intelligence</h2>
+                    @if (_isDiAnalyzing)
+                    {
+                        <span class="spinner dark"></span>
+                    }
+                    else if (_diResult is not null)
+                    {
+                        <span class="status @_diResult.Status.ToLowerInvariant()">@_diResult.Status</span>
+                        @if (_diResult.Duration.HasValue)
+                        {
+                            <span class="duration">@_diResult.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                        }
+                    }
+                </div>
+
+                @if (!_diConfigured)
+                {
+                    <p class="no-data">DI not configured — <a href="/settings">add DI endpoint in Settings</a>.</p>
+                }
+                else if (_diResult is not null)
+                {
+                    @if (_diResult.Cost is not null)
+                    {
+                        <div class="cost-card @GetCostClass(_diResult.Cost.EstimatedCost)">
+                            <span class="cost-amount">~$@_diResult.Cost.EstimatedCost.ToString("F4")</span>
+                            <span class="cost-detail">@_diResult.Cost.CostBreakdown</span>
+                        </div>
+                    }
+
+                    @if (_diResult.ErrorMessage is not null)
+                    {
+                        <div class="error-box"><pre>@_diResult.ErrorMessage</pre></div>
+                    }
+                    else
+                    {
+                        <div class="tabs">
+                            <button class="tab @(_diTab == "json" ? "active" : "")" @onclick='() => _diTab = "json"'>Service Response (Raw JSON)</button>
+                            <button class="tab @(_diTab == "fields" ? "active" : "")" @onclick='() => _diTab = "fields"'>Extracted Fields (@_diResult.Fields.Count)</button>
+                        </div>
+                        <div class="tab-content">
+                            @if (_diTab == "json")
+                            {
+                                <div class="json-wrapper">
+                                    <button class="btn-copy-json @(_diJsonCopied ? "copied" : "")" @onclick="CopyDiJson">@(_diJsonCopied ? "Copied!" : "Copy")</button>
+                                    <pre class="json-output">@(_diResult.RawJson ?? "—")</pre>
+                                </div>
+                            }
+                            else
+                            {
+                                @if (_diResult.Fields.Count > 0)
+                                {
+                                    <table class="fields-table">
+                                        <thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var f in _diResult.Fields)
+                                            {
+                                                <tr>
+                                                    <td class="field-name">@f.Name</td>
+                                                    <td>@(f.Value ?? "—")</td>
+                                                    <td class="field-confidence"><span class="@GetConfidenceClass(f.Confidence)">@(f.Confidence.HasValue ? $"{f.Confidence.Value:P0}" : "—")</span></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else { <p class="no-data">No extracted fields were found. The raw service response still contains the full payload.</p> }
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+
+        <!-- Field Diff Section -->
+        @if (_fieldDiffs.Count > 0)
+        {
+            <div class="results-section diff-section">
+                <h2>Field Comparison</h2>
+
+                @* ── CU vs DI Capability Summary ── *@
+                <div class="capability-summary">
+                    <h3>CU vs DI — Capability Summary</h3>
+                    <div class="capability-grid">
+                        <div class="cap-card">
+                            <span class="cap-label">CU Fields Extracted</span>
+                            <span class="cap-value">@(_cuResult?.Fields.Count ?? 0)</span>
+                        </div>
+                        <div class="cap-card">
+                            <span class="cap-label">DI Fields Extracted</span>
+                            <span class="cap-value">@(_diResult?.Fields.Count ?? 0)</span>
+                        </div>
+                        <div class="cap-card">
+                            <span class="cap-label">CU-Only Fields</span>
+                            <span class="cap-value cu-advantage">@_fieldDiffs.Count(d => d.Source == "CU Only")</span>
+                        </div>
+                        <div class="cap-card">
+                            <span class="cap-label">DI-Only Fields</span>
+                            <span class="cap-value">@_fieldDiffs.Count(d => d.Source == "DI Only")</span>
+                        </div>
+                    </div>
+                    @{
+                        var cuOnlyFields = _fieldDiffs.Where(d => d.Source == "CU Only").ToList();
+                        var classifyGenFields = _cuResult?.Fields
+                            .Where(f => _analyzerFieldMethods.TryGetValue(f.Name, out var m) && (m == "classify" || m == "generate"))
+                            .ToList() ?? [];
+                    }
+                    @if (classifyGenFields.Count > 0 || cuOnlyFields.Count > 0)
+                    {
+                        <div class="cu-advantages">
+                            <strong>CU Advantages over DI:</strong>
+                            <ul>
+                                @if (classifyGenFields.Count > 0)
+                                {
+                                    <li><span class="badge-cu-advantage">AI-Powered</span> CU used classify/generate methods for:
+                                        @string.Join(", ", classifyGenFields.Select(f => f.Name))
+                                        — DI cannot do this without a custom model.</li>
+                                }
+                                @if (cuOnlyFields.Count > 0)
+                                {
+                                    <li><span class="badge-cu-advantage">Extra Fields</span> CU extracted @cuOnlyFields.Count field(s) that DI did not:
+                                        @string.Join(", ", cuOnlyFields.Select(f => f.FieldName))</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+                @if (_cuResult?.Cost is not null && _diResult?.Cost is not null)
+                {
+                    <div class="cost-delta">
+                        @{ var delta = _cuResult.Cost.EstimatedCost - _diResult.Cost.EstimatedCost; }
+                        @if (delta < 0)
+                        {
+                            <span class="cost-cheaper">CU is ~$@((-delta).ToString("F4")) cheaper per document</span>
+                        }
+                        else if (delta > 0)
+                        {
+                            <span class="cost-more-expensive">CU is ~$@(delta.ToString("F4")) more expensive per document</span>
+                        }
+                        else
+                        {
+                            <span>Same estimated cost</span>
+                        }
+                    </div>
+                }
+                @{ var matchedCount = _fieldDiffs.Count(d => d.Source == "Both");
+                   var exactCount = _fieldDiffs.Count(d => d.MatchQuality == MatchQuality.Exact);
+                   var normalizedCount = _fieldDiffs.Count(d => d.MatchQuality == MatchQuality.Normalized);
+                   var fuzzyCount = _fieldDiffs.Count(d => d.MatchQuality == MatchQuality.Fuzzy);
+                   var valueMatchCount = _fieldDiffs.Count(d => d.Source == "Both" && d.ValuesMatch);
+                }
+                <div class="match-summary">
+                    <strong>@matchedCount</strong> fields paired
+                    (@exactCount exact, @normalizedCount normalized, @fuzzyCount fuzzy) ·
+                    <strong>@valueMatchCount</strong> values match ·
+                    <strong>@_fieldDiffs.Count(d => d.Source == "CU Only")</strong> CU-only ·
+                    <strong>@_fieldDiffs.Count(d => d.Source == "DI Only")</strong> DI-only
+                </div>
+                <table class="fields-table diff-table">
+                    <thead>
+                        <tr>
+                            <th>Field</th>
+                            <th>CU Value</th>
+                            <th>CU Conf.</th>
+                            <th>DI Value</th>
+                            <th>DI Conf.</th>
+                            <th>Match</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in _fieldDiffs)
+                        {
+                            <tr class="@GetRowClass(d)">
+                                <td class="field-name">
+                                    @d.FieldName
+                                    @if (d.Source == "Both" && d.CuFieldName != d.DiFieldName)
+                                    {
+                                        <span class="field-alias" title="CU: @d.CuFieldName — DI: @d.DiFieldName">
+                                            @if (d.MatchQuality == MatchQuality.Fuzzy)
+                                            {
+                                                <span class="badge-fuzzy">~fuzzy</span>
+                                            }
+                                            <br/><span class="di-alias">DI: @d.DiFieldName</span>
+                                        </span>
+                                    }
+                                </td>
+                                <td>@(d.CuValue ?? "—")</td>
+                                <td class="field-confidence"><span class="@GetConfidenceClass(d.CuConfidence)">@(d.CuConfidence.HasValue ? $"{d.CuConfidence.Value:P0}" : "—")</span></td>
+                                <td>@(d.DiValue ?? "—")</td>
+                                <td class="field-confidence"><span class="@GetConfidenceClass(d.DiConfidence)">@(d.DiConfidence.HasValue ? $"{d.DiConfidence.Value:P0}" : "—")</span></td>
+                                <td class="match-cell">
+                                    @if (d.Source == "Both")
+                                    {
+                                        <span class="@(d.ValuesMatch ? "badge-match" : "badge-diff")">@(d.ValuesMatch ? "Match" : "Diff")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge-source">@d.Source</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private IBrowserFile? _selectedFile;
+    private bool _isDragOver;
+    private bool _isCuAnalyzing;
+    private bool _isDiAnalyzing;
+    private string _cuAnalyzerId = "";
+    private string _diModelId = "";
+    private string _cuTab = "json";
+    private string _diTab = "json";
+
+    private AnalysisViewModel? _cuResult;
+    private DiAnalysisResult? _diResult;
+    private List<FieldComparison> _fieldDiffs = [];
+    private List<string> _customAnalyzerIds = [];
+    private List<string> _diModelIds = [];
+    private string? _suggestedDiModel;
+    private bool _diConfigured => !string.IsNullOrWhiteSpace(DiOptions.CurrentValue.Endpoint);
+    private Dictionary<string, string> _analyzerFieldMethods = new(StringComparer.OrdinalIgnoreCase);
+    private bool _cuJsonCopied;
+    private bool _diJsonCopied;
+
+    // CU analyzers → closest DI model equivalents
+    // prebuilt-document was removed in DI API 2024-11-30; its key-value extraction merged into prebuilt-layout
+    private static readonly Dictionary<string, string> CuToDiMap = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["prebuilt-read"]                = "prebuilt-read",
+        ["prebuilt-layout"]              = "prebuilt-layout",
+        ["prebuilt-document"]            = "prebuilt-layout",           // base analyzer — content only
+        ["prebuilt-invoice"]             = "prebuilt-invoice",
+        ["prebuilt-receipt"]             = "prebuilt-receipt",
+        ["prebuilt-idDocument"]          = "prebuilt-idDocument",
+        ["prebuilt-contract"]            = "prebuilt-contract",
+        ["prebuilt-documentFields"]      = "prebuilt-layout",           // CU utility → DI layout w/ keyValuePairs
+        ["prebuilt-documentFieldSchema"] = "prebuilt-layout",           // CU schema discovery → DI layout
+        ["prebuilt-documentSearch"]      = "prebuilt-layout",           // no RAG equivalent in DI
+    };
+
+    // Analyzers that only do content extraction (no fieldSchema → no extracted fields)
+    private static readonly HashSet<string> ContentOnlyAnalyzers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "prebuilt-read", "prebuilt-layout", "prebuilt-document"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cuAnalyzerId = CuOptions.CurrentValue.DefaultAnalyzerId;
+        _diModelId = DiOptions.CurrentValue.DefaultModelId;
+
+        var allAnalyzers = await CuService.ListAnalyzerIdsAsync();
+        _customAnalyzerIds = allAnalyzers.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+
+        if (_diConfigured)
+        {
+            _diModelIds = await DiService.ListModelIdsAsync(DiOptions.CurrentValue);
+        }
+
+        UpdateSuggestedDiModel();
+    }
+
+    private void OnCuAnalyzerChanged()
+    {
+        UpdateSuggestedDiModel();
+        // Auto-select the suggested DI model if it's available in the list
+        if (_suggestedDiModel is not null && _diModelIds.Contains(_suggestedDiModel, StringComparer.OrdinalIgnoreCase))
+        {
+            _diModelId = _suggestedDiModel;
+        }
+    }
+
+    private void UpdateSuggestedDiModel()
+    {
+        _suggestedDiModel = CuToDiMap.TryGetValue(_cuAnalyzerId, out var mapped) ? mapped : null;
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _cuResult = null;
+        _diResult = null;
+        _fieldDiffs = [];
+        _isDragOver = false;
+    }
+
+    private async Task RunComparison()
+    {
+        if (_selectedFile is null) return;
+
+        _cuResult = null;
+        _diResult = null;
+        _fieldDiffs = [];
+        _isCuAnalyzing = true;
+        _isDiAnalyzing = _diConfigured;
+        StateHasChanged();
+
+        var maxSize = CuOptions.CurrentValue.MaxFileSizeMB * 1024L * 1024L;
+
+        // Read file into memory once so both services can use it
+        await using var stream = _selectedFile.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var fileBytes = ms.ToArray();
+
+        var cuTask = RunCuAsync(fileBytes);
+        var diTask = _diConfigured ? RunDiAsync(fileBytes) : Task.CompletedTask;
+
+        await Task.WhenAll(cuTask, diTask);
+
+        BuildFieldDiffs();
+
+        _isCuAnalyzing = false;
+        _isDiAnalyzing = false;
+    }
+
+    private async Task RunCuAsync(byte[] fileBytes)
+    {
+        try
+        {
+            // Try to load field methods from analyzer definition (for CU Advantage badges)
+            await LoadAnalyzerFieldMethods(_cuAnalyzerId);
+
+            using var cuStream = new MemoryStream(fileBytes);
+            _cuResult = await CuService.AnalyzeFileAsync(
+                _cuAnalyzerId, cuStream, _selectedFile!.Name, _selectedFile.ContentType);
+        }
+        catch (Exception ex)
+        {
+            _cuResult = new AnalysisViewModel
+            {
+                AnalyzerId = _cuAnalyzerId,
+                FileName = _selectedFile!.Name,
+                Status = "Failed",
+                ErrorMessage = ex.Message
+            };
+        }
+        _isCuAnalyzing = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RunDiAsync(byte[] fileBytes)
+    {
+        try
+        {
+            using var diStream = new MemoryStream(fileBytes);
+            _diResult = await DiService.AnalyzeFileAsync(
+                DiOptions.CurrentValue, _diModelId, diStream, _selectedFile!.Name, _selectedFile.ContentType);
+        }
+        catch (Exception ex)
+        {
+            _diResult = new DiAnalysisResult
+            {
+                ModelId = _diModelId,
+                FileName = _selectedFile!.Name,
+                Status = "Failed",
+                ErrorMessage = ex.Message
+            };
+        }
+        _isDiAnalyzing = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void BuildFieldDiffs()
+    {
+        _fieldDiffs = [];
+        if (_cuResult is null && _diResult is null) return;
+
+        var cuFields = (_cuResult?.Fields ?? []).ToList();
+        var diFields = (_diResult?.Fields ?? []).ToList();
+
+        // Build lookup: normalizedKey → list of fields
+        var cuByKey = cuFields.GroupBy(f => FieldNameNormalizer.NormalizeKey(f.Name))
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var diByKey = diFields.GroupBy(f => FieldNameNormalizer.NormalizeKey(f.Name))
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var matchedCu = new HashSet<ExtractedField>();
+        var matchedDi = new HashSet<ExtractedField>();
+
+        // Pass 1: Exact case-insensitive name match
+        foreach (var cu in cuFields)
+        {
+            var di = diFields.FirstOrDefault(d => !matchedDi.Contains(d) &&
+                string.Equals(cu.Name, d.Name, StringComparison.OrdinalIgnoreCase));
+            if (di is not null)
+            {
+                _fieldDiffs.Add(MakeDiff(cu, di, MatchQuality.Exact));
+                matchedCu.Add(cu);
+                matchedDi.Add(di);
+            }
+        }
+
+        // Pass 2: Normalized key match (PascalCase ↔ UPPER SPACE ↔ colon-stripped)
+        foreach (var cu in cuFields.Where(f => !matchedCu.Contains(f)))
+        {
+            var cuKey = FieldNameNormalizer.NormalizeKey(cu.Name);
+            var di = diFields.FirstOrDefault(d => !matchedDi.Contains(d) &&
+                FieldNameNormalizer.NormalizeKey(d.Name) == cuKey);
+            if (di is not null)
+            {
+                _fieldDiffs.Add(MakeDiff(cu, di, MatchQuality.Normalized));
+                matchedCu.Add(cu);
+                matchedDi.Add(di);
+            }
+        }
+
+        // Pass 3: Fuzzy token-overlap match (Jaccard ≥ 0.5)
+        var remainingCu = cuFields.Where(f => !matchedCu.Contains(f)).ToList();
+        var remainingDi = diFields.Where(f => !matchedDi.Contains(f)).ToList();
+
+        foreach (var cu in remainingCu)
+        {
+            ExtractedField? bestDi = null;
+            double bestScore = 0;
+            foreach (var di in remainingDi.Where(d => !matchedDi.Contains(d)))
+            {
+                var score = FieldNameNormalizer.TokenSimilarity(cu.Name, di.Name);
+                if (score > bestScore) { bestScore = score; bestDi = di; }
+            }
+            if (bestDi is not null && bestScore >= 0.5)
+            {
+                _fieldDiffs.Add(MakeDiff(cu, bestDi, MatchQuality.Fuzzy));
+                matchedCu.Add(cu);
+                matchedDi.Add(bestDi);
+            }
+        }
+
+        // Remaining unmatched → single-source rows
+        foreach (var cu in cuFields.Where(f => !matchedCu.Contains(f)))
+            _fieldDiffs.Add(MakeDiff(cu, null, MatchQuality.None));
+        foreach (var di in diFields.Where(f => !matchedDi.Contains(f)))
+            _fieldDiffs.Add(MakeDiff(null, di, MatchQuality.None));
+
+        // Sort: matched (Both) first sorted by match quality, then CU-only, then DI-only
+        _fieldDiffs = _fieldDiffs
+            .OrderBy(d => d.Source == "Both" ? 0 : d.Source == "CU Only" ? 1 : 2)
+            .ThenBy(d => d.MatchQuality)
+            .ThenBy(d => d.FieldName)
+            .ToList();
+    }
+
+    private static FieldComparison MakeDiff(ExtractedField? cu, ExtractedField? di, MatchQuality quality)
+    {
+        // Display name: prefer CU name, fall back to DI name
+        var displayName = cu?.Name ?? di?.Name ?? "";
+        return new FieldComparison
+        {
+            FieldName = displayName,
+            CuFieldName = cu?.Name,
+            DiFieldName = di?.Name,
+            CuValue = cu?.Value,
+            CuConfidence = cu?.Confidence,
+            DiValue = di?.Value,
+            DiConfidence = di?.Confidence,
+            MatchQuality = quality
+        };
+    }
+
+    private static string GetRowClass(FieldComparison d) =>
+        d.Source == "Both" ? (d.ValuesMatch ? "match" : "mismatch") :
+        d.Source == "CU Only" ? "cu-only-row" : "di-only-row";
+
+    private static string GetCostClass(decimal cost) =>
+        cost < 0.01m ? "cost-green" : cost < 0.10m ? "cost-yellow" : "cost-orange";
+
+    private static string GetConfidenceClass(double? confidence) =>
+        confidence switch
+        {
+            >= 0.80 => "confidence-high",
+            >= 0.60 => "confidence-mid",
+            not null => "confidence-low",
+            _ => ""
+        };
+
+    private async Task CopyCuJson()
+    {
+        if (_cuResult?.RawJson is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", _cuResult.RawJson);
+        _cuJsonCopied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _cuJsonCopied = false;
+    }
+
+    private async Task CopyDiJson()
+    {
+        if (_diResult?.RawJson is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", _diResult.RawJson);
+        _diJsonCopied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _diJsonCopied = false;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private async Task LoadAnalyzerFieldMethods(string analyzerId)
+    {
+        _analyzerFieldMethods.Clear();
+        try
+        {
+            var defJson = await CuService.GetAnalyzerDefinitionAsync(analyzerId);
+            if (string.IsNullOrWhiteSpace(defJson)) return;
+            using var doc = System.Text.Json.JsonDocument.Parse(defJson);
+            if (doc.RootElement.TryGetProperty("fieldSchema", out var schema) &&
+                schema.TryGetProperty("fields", out var fields))
+            {
+                foreach (var field in fields.EnumerateObject())
+                {
+                    if (field.Value.TryGetProperty("method", out var method))
+                    {
+                        _analyzerFieldMethods[field.Name] = method.GetString() ?? "";
+                    }
+                }
+            }
+        }
+        catch { /* Non-critical — badges just won't show */ }
+    }
+}

@@ -1,0 +1,88 @@
+@using CU_TestHarness.Services
+@inject ContentUnderstandingService CuService
+
+<div class="analyzer-list-panel">
+    <div class="panel-header">
+        <h2>Analyzers</h2>
+        <div class="filter-group">
+            <button class="filter-btn @(_filter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>All</button>
+            <button class="filter-btn @(_filter == "prebuilt" ? "active" : "")" @onclick='() => SetFilter("prebuilt")'>Prebuilt</button>
+            <button class="filter-btn @(_filter == "custom" ? "active" : "")" @onclick='() => SetFilter("custom")'>Custom</button>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <p class="no-data"><span class="spinner dark"></span> Loading analyzers…</p>
+    }
+    else if (_filteredIds.Count == 0)
+    {
+        <p class="no-data">No analyzers found.</p>
+    }
+    else
+    {
+        <div class="analyzer-items">
+            @foreach (var id in _filteredIds)
+            {
+                <div class="analyzer-item @(id == SelectedId ? "selected" : "")" @onclick="() => SelectAnalyzer(id)">
+                    <span class="analyzer-id">@id</span>
+                    <span class="analyzer-badge @(id.StartsWith("prebuilt-") ? "prebuilt" : "custom")">
+                        @(id.StartsWith("prebuilt-") ? "prebuilt" : "custom")
+                    </span>
+                </div>
+            }
+        </div>
+    }
+
+    <button class="btn-refresh" @onclick="RefreshList" disabled="@_isLoading">Refresh</button>
+</div>
+
+@code {
+    [Parameter] public string? SelectedId { get; set; }
+    [Parameter] public EventCallback<string> OnAnalyzerSelected { get; set; }
+    [Parameter] public bool ShowDelete { get; set; } = true;
+
+    private List<string> _allIds = [];
+    private List<string> _filteredIds = [];
+    private string _filter = "all";
+    private bool _isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshList();
+    }
+
+    public async Task RefreshList()
+    {
+        _isLoading = true;
+        StateHasChanged();
+
+        _allIds = await CuService.ListAnalyzerIdsAsync();
+        _allIds.Sort(StringComparer.OrdinalIgnoreCase);
+        ApplyFilter();
+
+        _isLoading = false;
+        StateHasChanged();
+    }
+
+    private void SetFilter(string filter)
+    {
+        _filter = filter;
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        _filteredIds = _filter switch
+        {
+            "prebuilt" => _allIds.Where(id => id.StartsWith("prebuilt-")).ToList(),
+            "custom" => _allIds.Where(id => !id.StartsWith("prebuilt-")).ToList(),
+            _ => _allIds.ToList()
+        };
+    }
+
+    private async Task SelectAnalyzer(string id)
+    {
+        await OnAnalyzerSelected.InvokeAsync(id);
+    }
+}

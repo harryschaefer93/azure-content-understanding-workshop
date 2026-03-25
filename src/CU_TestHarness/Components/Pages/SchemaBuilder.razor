@@ -1,0 +1,270 @@
+@page "/schema-builder"
+@using CU_TestHarness.Models
+@using CU_TestHarness.Services
+@inject ContentUnderstandingService CuService
+@inject ModelProfileState ProfileState
+@rendermode InteractiveServer
+
+<PageTitle>Schema Builder — CU Test Harness</PageTitle>
+
+<div class="container">
+    <h1>UC1 — Schema Generation from Samples</h1>
+    <p class="subtitle">
+        Upload 3–5 sample documents. They'll be analyzed with <code>prebuilt-documentFields</code> to detect common fields.
+        Review and edit the detected fields, then generate and create a custom analyzer.
+    </p>
+
+    <div class="upload-section">
+        <div class="upload-area @(_isDragOver ? "drag-over" : "")"
+             @ondragenter="@(() => _isDragOver = true)"
+             @ondragleave="@(() => _isDragOver = false)"
+             @ondragover:preventDefault>
+            <InputFile OnChange="OnFilesSelected" multiple
+                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+            <div class="upload-prompt">
+                @if (_files.Count > 0)
+                {
+                    <span class="file-name">@_files.Count file(s) — @FormatSize(_files.Sum(f => f.File.Size))</span>
+                }
+                else
+                {
+                    <span>Drag &amp; drop files here, or <strong>click to browse</strong></span>
+                    <span class="hint">Upload 3–5 sample documents (PDF, images, Office docs)</span>
+                }
+            </div>
+        </div>
+
+        <button class="btn-analyze" @onclick="RunSchemaDetection"
+                disabled="@(_files.Count == 0 || _detecting)">
+            @if (_detecting)
+            {
+                <span class="spinner"></span> <span>Analyzing @_doneCount / @_files.Count…</span>
+            }
+            else
+            {
+                <span>Detect Fields</span>
+            }
+        </button>
+    </div>
+
+    @if (_detectedFields.Count > 0)
+    {
+        <div class="upload-section" style="margin-top:1.5rem;">
+            <h2 style="margin:0 0 0.5rem;font-size:1.1rem;">Detected Fields (@_detectedFields.Count)</h2>
+            <p style="font-size:0.82rem;color:var(--text-muted);">
+                Edit names, choose the CU method for each, remove unwanted fields, then generate the analyzer JSON.
+            </p>
+            <table class="detected-fields-table">
+                <thead>
+                    <tr>
+                        <th>Include</th>
+                        <th>Field Name</th>
+                        <th>Method</th>
+                        <th>Frequency</th>
+                        <th>Sample Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _detectedFields)
+                    {
+                        <tr>
+                            <td><input type="checkbox" @bind="f.Include" /></td>
+                            <td><input type="text" @bind="f.Name" class="field-name-input" /></td>
+                            <td>
+                                <select @bind="f.Method">
+                                    <option value="extract">extract</option>
+                                    <option value="classify">classify</option>
+                                    <option value="generate">generate</option>
+                                </select>
+                            </td>
+                            <td><span class="freq-badge">@f.Frequency / @_files.Count</span></td>
+                            <td class="sample-val">@(f.SampleValue?.Length > 80 ? f.SampleValue[..80] + "…" : f.SampleValue ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                <label>Analyzer ID:</label>
+                <input type="text" @bind="_analyzerId" pattern="[a-zA-Z][a-zA-Z0-9_]*" title="Letters, digits, and underscores only — no hyphens" style="width:300px;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);" placeholder="my_custom_analyzer" />
+                <label>Model Profile:</label>
+                <select @bind="_selectedProfileId" style="padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);">
+                    @foreach (var p in ModelProfile.AvailableProfiles)
+                    {
+                        <option value="@p.Id">@p.DisplayName @(p.DataResidencyGuaranteed ? "\U0001f341" : "\U0001f310")</option>
+                    }
+                </select>
+                <button class="btn-analyze" @onclick="GenerateAndCreate" disabled="@_isCreating">
+                    @if (_isCreating) { <span class="spinner"></span> } Generate &amp; Create Analyzer
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_generatedJson))
+            {
+                <details style="margin-top:1rem;">
+                    <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;">View Generated JSON</summary>
+                    <pre class="json-output" style="margin-top:0.5rem;max-height:400px;">@_generatedJson</pre>
+                </details>
+            }
+        </div>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="error-box" style="margin-top:0.75rem;"><pre>@_error</pre></div>
+    }
+
+    @if (_successMessage is not null)
+    {
+        <div class="success-box" style="margin-top:0.75rem;"><pre>@_successMessage</pre></div>
+    }
+</div>
+
+@code {
+    private List<(IBrowserFile File, byte[] Bytes)> _files = [];
+    private List<DetectedField> _detectedFields = [];
+    private bool _detecting;
+    private bool _isDragOver;
+    private int _doneCount;
+    private string _analyzerId = "my_custom_analyzer";
+    private string _selectedProfileId = "";
+    private string? _generatedJson;
+    private string? _error;
+    private string? _successMessage;
+    private bool _isCreating;
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        _files.Clear();
+        _detectedFields.Clear();
+        _generatedJson = null;
+        _error = null;
+        _successMessage = null;
+        _isDragOver = false;
+        _selectedProfileId = ProfileState.ActiveProfile.Id;
+
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            await using var stream = file.OpenReadStream(50 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _files.Add((file, ms.ToArray()));
+        }
+    }
+
+    private async Task RunSchemaDetection()
+    {
+        if (_files.Count == 0) return;
+        _detecting = true;
+        _doneCount = 0;
+        _error = null;
+        _successMessage = null;
+        _detectedFields.Clear();
+        _generatedJson = null;
+        StateHasChanged();
+
+        var fieldStats = new Dictionary<string, (int Count, string? Sample)>(StringComparer.OrdinalIgnoreCase);
+
+        var semaphore = new SemaphoreSlim(3);
+        var tasks = _files.Select(async item =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                using var s = new MemoryStream(item.Bytes);
+                return await CuService.AnalyzeFileAsync("prebuilt-documentFields", s, item.File.Name, item.File.ContentType);
+            }
+            catch (Exception ex)
+            {
+                return new AnalysisViewModel { Status = "Failed", ErrorMessage = ex.Message, FileName = item.File.Name };
+            }
+            finally
+            {
+                semaphore.Release();
+                Interlocked.Increment(ref _doneCount);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var result in results.Where(r => r.Status == "Succeeded"))
+        {
+            foreach (var field in result.Fields)
+            {
+                var key = field.Name;
+                if (fieldStats.TryGetValue(key, out var existing))
+                    fieldStats[key] = (existing.Count + 1, existing.Sample);
+                else
+                    fieldStats[key] = (1, field.Value);
+            }
+        }
+
+        var failCount = results.Count(r => r.Status != "Succeeded");
+        if (failCount > 0 && failCount < _files.Count)
+            _error = $"{failCount} of {_files.Count} files failed to analyze.";
+        else if (failCount == _files.Count)
+        {
+            _error = "All files failed. " + (results.FirstOrDefault()?.ErrorMessage ?? "");
+            _detecting = false;
+            return;
+        }
+
+        _detectedFields = fieldStats
+            .OrderByDescending(kv => kv.Value.Count)
+            .ThenBy(kv => kv.Key)
+            .Select(kv => new DetectedField
+            {
+                Name = kv.Key,
+                Frequency = kv.Value.Count,
+                SampleValue = kv.Value.Sample,
+                Method = "extract"
+            })
+            .ToList();
+
+        _detecting = false;
+    }
+
+    private async Task GenerateAndCreate()
+    {
+        var included = _detectedFields
+            .Where(f => f.Include && !string.IsNullOrWhiteSpace(f.Name))
+            .Select(f => (f.Name, f.Method))
+            .ToList();
+
+        if (included.Count == 0) return;
+
+        if (_analyzerId.Contains('-'))
+        {
+            _error = "Analyzer ID cannot contain hyphens ('-'). Use underscores ('_') instead.";
+            return;
+        }
+
+        var profile = ModelProfile.AvailableProfiles.FirstOrDefault(p => p.Id == _selectedProfileId)
+                      ?? ProfileState.ActiveProfile;
+        _generatedJson = AnalyzerTemplates.GenerateSchemaFromFields(_analyzerId, included, profile.CompletionModelName, profile.EmbeddingModelName);
+        _isCreating = true;
+        _error = null;
+        _successMessage = null;
+        StateHasChanged();
+
+        var (success, error) = await CuService.CreateOrUpdateAnalyzerAsync(_generatedJson, allowReplace: false);
+        _isCreating = false;
+
+        if (success)
+        {
+            _successMessage = $"Analyzer '{_analyzerId}' created successfully!";
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}
