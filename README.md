@@ -6,6 +6,95 @@ Accelerator repo for **Azure AI Content Understanding (CU)**. Includes infrastru
 
 > **Tracking:** See [`MANIFEST.md`](MANIFEST.md) for project status and decisions.
 
+## Solution Architecture
+
+The workshop deploys an **Azure AI Services** account (with optional cross-region models), then connects a local **Blazor Server** test harness that sends documents to Azure for analysis.
+
+```mermaid
+flowchart LR
+    subgraph Local["Local Development"]
+        direction TB
+        User["👤 User / Operator"]
+        Harness["Blazor Server Test Harness<br/><i>localhost:5000</i>"]
+        Notebooks["C# &amp; Python Notebooks"]
+        Samples["Sample Documents<br/><i>PDFs</i>"]
+        User -->|"upload &amp; analyze"| Harness
+        Samples -->|"test input"| Harness
+    end
+
+    subgraph Azure["Azure Cloud"]
+        direction TB
+        subgraph CU_Account["Azure AI Services Account"]
+            direction LR
+            CU["Content Understanding<br/><i>REST API v2025-11-01</i>"]
+            DI["Document Intelligence<br/><i>REST API v2024-11-30</i>"]
+        end
+        subgraph Models["Model Deployments"]
+            direction LR
+            GPT["GPT-4.1 · 4.1 Mini · 4o<br/><i>Completion models</i>"]
+            Embed["Embedding Models<br/><i>Ada-002 · 3-Large · 3-Small</i>"]
+        end
+        CU -->|"LLM extraction"| GPT
+        CU -->|"embeddings"| Embed
+    end
+
+    Harness -->|"REST / SDK"| CU
+    Harness -->|"REST"| DI
+    Notebooks -->|"REST"| CU
+    Harness -.->|"semantic matching"| GPT
+
+    IaC["⚙️ Bicep + Terraform"] -.->|"deploys"| Azure
+
+    style Local fill:#f0f4ff,stroke:#4a6fa5
+    style Azure fill:#e6f2ff,stroke:#0078d4
+    style CU_Account fill:#cce0ff,stroke:#0078d4
+    style Models fill:#cce0ff,stroke:#0078d4
+```
+
+> **Authentication:** All access uses Microsoft Entra ID (`DefaultAzureCredential`). API keys are disabled. Each user needs the **Cognitive Services User** role on the AI Services account.
+>
+> **Infrastructure:** Deployed via Bicep (source of truth) or Terraform. See [`infra/`](infra/) for templates.
+
+## How It Works
+
+The core workflow — uploading a document and getting structured results — follows these steps:
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Harness as Blazor Test Harness
+    participant CU as Content Understanding
+    participant LLM as GPT Model
+    participant DI as Document Intelligence
+
+    User->>Harness: Upload document (PDF, image, Office, audio, video)
+    User->>Harness: Select analyzer (prebuilt or custom)
+    Harness->>CU: AnalyzeBinaryAsync(analyzerId, file)
+    CU->>DI: Extract text & layout (internal)
+    CU->>LLM: Classify / extract / generate fields
+    LLM-->>CU: Structured field results
+    CU-->>Harness: JSON response (fields, markdown, bounding regions)
+    Harness->>Harness: Parse results & estimate cost
+    Harness-->>User: Render fields, PDF viewer with bounding boxes, raw JSON
+
+    Note over User,Harness: Additional capabilities
+    User->>Harness: Run batch tests (Test Suite)
+    Harness->>LLM: Semantic matching (expected vs extracted)
+    LLM-->>Harness: match / confidence / reasoning
+    Harness-->>User: Pass/Fail matrix with accuracy %
+```
+
+### Workshop Use Cases
+
+| UC | Name | Harness Page | What It Does |
+|----|------|--------------|--------------|
+| 1 | Schema Generation | `/schema-builder` | Upload samples → auto-detect fields → create custom analyzer |
+| 2 | Schema Tuning | `/schema-editor` | Pick a template → customize fields → deploy analyzer |
+| 3 | Automated Test Suite | `/test` | Batch-analyze documents → compare against expected values |
+| 4 | Natural Language Query | `/analyze` | Upload a document → extract fields or ask NL questions |
+| 5 | Multi-Document Validation | `/validate` | Analyze multiple docs → cross-document consistency check |
+| 6 | Corrective Feedback | `/feedback` | Edit field descriptions → re-analyze → verify improvement |
+
 ## Repository Structure
 
 ```
@@ -44,17 +133,6 @@ sample-docs/                      Synthetic sample PDFs
 |------|-------------|----------|
 | **Single-region** | One Azure AI Services account hosts both CU and model deployments. Simplest setup. | Yes |
 | **Cross-region** | Separate Models account in a second region with managed-identity RBAC. Use when CU and models must be in different regions. | No |
-
-## Workshop Use Cases
-
-| UC | Name | Harness Page |
-|----|------|--------------|
-| 1 | Schema Generation from samples | `/schema-builder` |
-| 2 | Schema Tuning (templates) | `/schema-editor` |
-| 3 | Automated Test Suite | `/test` |
-| 4 | Natural Language Query | `/analyze` (NL tab) |
-| 5 | Multi-Document Validation | `/validate` |
-| 6 | Corrective Feedback Loop | `/feedback` |
 
 ## Prerequisites
 

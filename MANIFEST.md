@@ -1,6 +1,6 @@
 # Project Manifest — Azure Content Understanding Workshop
 
-> **Last updated:** 2026-03-25
+> **Last updated:** 2026-03-26
 
 ## Overview
 
@@ -24,6 +24,7 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 | `notebook/CU-API-Testing-Guide.ipynb` | C# Polyglot Notebook — full CU REST API walkthrough | Done |
 | `notebook/CU-API-Testing-Guide-Python.ipynb` | Python notebook — same walkthrough | Done |
 | `sample-docs/` | Synthetic PDFs (5 commitment letters, 2 title searches) + test manifests | Done |
+| `README.md` | Architecture diagrams (Mermaid), flow diagrams, and workshop use-case table | Done |
 
 ## Deployment Modes
 
