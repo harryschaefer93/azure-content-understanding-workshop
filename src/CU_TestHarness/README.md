@@ -47,10 +47,29 @@ Edit `appsettings.json` to change the endpoint, default analyzer, or max file si
 }
 ```
 
+## Pages
+
+| Page | Route(s) | Description |
+|------|----------|-------------|
+| **Home** | `/` | UC1–UC6 tile dashboard |
+| **Analyzers** | `/analyzers`, `/schema-editor` | Manage tab (browse/edit/delete/create, quick test) + Auto-Detect tab (upload → detect fields → create) |
+| **Test Suite** | `/test`, `/validate` | Test Suite mode (batch testing, semantic matching) + Validation mode (N-doc consistency matrix) |
+| **Analyze** | `/analyze` | Single-doc analysis, PDF viewer with bounding boxes, NL query |
+| **Compare** | `/compare` | CU vs DI side-by-side comparison |
+| **Settings** | `/settings` | Model profile selection, endpoint config, connection test |
+
+## Shared Components
+
+- **FileUploadArea** — reusable drag-drop file upload zone
+- **AnalyzerSelect** — analyzer dropdown with prebuilt/custom groups
+- **FieldsTable** — field/value/confidence table with click-to-highlight
+- **ResultsTabs** — tabbed results (Fields, JSON, Markdown) with copy-to-clipboard
+- **CostCard** — cost estimate display card
+
 ## Features
 
-- **Upload pane** — drag/drop or browse for files
-- **Analyzer selector** — dropdown of available analyzers + free-text input for custom IDs
+- **Upload pane** — drag/drop or browse for files (via shared `FileUploadArea` component)
+- **Analyzer selector** — dropdown of available analyzers + free-text input for custom IDs (via shared `AnalyzerSelect` component)
 - **Results tabs:**
   - **Fields** — structured key-value table with confidence scores
   - **Raw JSON** — full API response
@@ -65,7 +84,7 @@ Edit `appsettings.json` to change the endpoint, default analyzer, or max file si
   - Ada 002 Standard
   - Embedding 3 Large Standard
   - Embedding 3 Small Standard
-- **Per-use-case model override** — Schema Builder and Schema Editor let you choose a different completion + embedding combination for each analyzer
+- **Per-use-case model override** — the Analyzers page lets you choose a different completion + embedding combination for each analyzer
 - **Active model badge** — every page shows the current model profile and data residency status
 - **Architecture reference** — self-contained dark-themed page (`/architecture.html`) comparing CU vs DI: resource diagrams, analyzer taxonomy, model routing flow, PATCH defaults mapping, capability table, and data residency callout
 - **Analyzer templates** — 7 pre-built schema templates in Schema Editor:

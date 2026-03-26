@@ -88,12 +88,12 @@ sequenceDiagram
 
 | UC | Name | Harness Page | What It Does |
 |----|------|--------------|--------------|
-| 1 | Schema Generation | `/schema-builder` | Upload samples → auto-detect fields → create custom analyzer |
-| 2 | Schema Tuning | `/schema-editor` | Pick a template → customize fields → deploy analyzer |
-| 3 | Automated Test Suite | `/test` | Batch-analyze documents → compare against expected values |
+| 1 | Schema Generation | `/analyzers` (Auto-Detect tab) | Upload samples → auto-detect fields → create custom analyzer |
+| 2 | Schema Tuning | `/analyzers` (Manage tab) | Pick a template → customize fields → deploy analyzer |
+| 3 | Automated Test Suite | `/test` (Test Suite mode) | Batch-analyze documents → compare against expected values |
 | 4 | Natural Language Query | `/analyze` | Upload a document → extract fields or ask NL questions |
-| 5 | Multi-Document Validation | `/validate` | Analyze multiple docs → cross-document consistency check |
-| 6 | Corrective Feedback | `/feedback` | Edit field descriptions → re-analyze → verify improvement |
+| 5 | Multi-Document Validation | `/test` (Validation mode) | Analyze multiple docs → cross-document consistency check |
+| 6 | Corrective Feedback | `/analyzers` (Quick Test) | Edit field descriptions → re-analyze → verify improvement |
 
 ## Repository Structure
 
@@ -110,7 +110,8 @@ infra/
   defaults-body.json              PATCH body for CU model routing defaults
 
 src/CU_TestHarness/               Blazor Server test harness
-  Components/Pages/               11 Razor pages (Analyze, Compare, Schema Builder, ...)
+  Components/Pages/               6 Razor pages (Analyze, Analyzers, Compare, ...)
+  Components/Shared/              5 shared components (FileUploadArea, AnalyzerSelect, ...)
   Models/                         View models, analyzer templates, cost estimator
   Services/                       CU + DI + Completion service clients
   wwwroot/                        Static assets incl. architecture.html

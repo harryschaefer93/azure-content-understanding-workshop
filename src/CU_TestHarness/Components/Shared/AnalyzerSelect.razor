@@ -1,0 +1,91 @@
+@* Reusable analyzer selection dropdown with optgroups and custom ID toggle *@
+@using CU_TestHarness.Services
+@inject ContentUnderstandingService CuService
+
+<div class="analyzer-select">
+    <label for="@_selectId">@Label</label>
+    <select id="@_selectId" value="@SelectedId" @onchange="HandleChange">
+        <optgroup label="Content Extraction (OCR only, no fields)">
+            <option value="prebuilt-read">prebuilt-read</option>
+            <option value="prebuilt-layout">prebuilt-layout</option>
+        </optgroup>
+        <optgroup label="Base (content only — use as parent for custom)">
+            <option value="prebuilt-document">prebuilt-document</option>
+        </optgroup>
+        <optgroup label="Domain-Specific (built-in field schemas)">
+            <option value="prebuilt-invoice">prebuilt-invoice</option>
+            <option value="prebuilt-receipt">prebuilt-receipt</option>
+            <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+            <option value="prebuilt-creditCard">prebuilt-creditCard</option>
+            <option value="prebuilt-contract">prebuilt-contract</option>
+            <option value="prebuilt-utilityBill">prebuilt-utilityBill</option>
+            <option value="prebuilt-payStub.us">prebuilt-payStub.us</option>
+            <option value="prebuilt-healthInsuranceCard.us">prebuilt-healthInsuranceCard.us</option>
+        </optgroup>
+        <optgroup label="Utility (generic field extraction)">
+            <option value="prebuilt-documentFields">prebuilt-documentFields</option>
+            <option value="prebuilt-documentFieldSchema">prebuilt-documentFieldSchema</option>
+        </optgroup>
+        <optgroup label="RAG (LLM + Embeddings)">
+            <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+            <option value="prebuilt-imageSearch">prebuilt-imageSearch</option>
+            <option value="prebuilt-audioSearch">prebuilt-audioSearch</option>
+            <option value="prebuilt-videoSearch">prebuilt-videoSearch</option>
+        </optgroup>
+        @if (_customIds.Count > 0)
+        {
+            <optgroup label="Custom (from your resource)">
+                @foreach (var id in _customIds)
+                {
+                    <option value="@id">@id</option>
+                }
+            </optgroup>
+        }
+    </select>
+    @if (ShowCustomToggle)
+    {
+        @if (_useCustomId)
+        {
+            <input type="text" value="@SelectedId" @onchange="HandleCustomInput" placeholder="Type custom analyzer ID" />
+        }
+        <label class="custom-toggle">
+            <input type="checkbox" @bind="_useCustomId" /> Use custom ID
+        </label>
+    }
+</div>
+
+@code {
+    private List<string> _customIds = [];
+    private bool _useCustomId;
+    private string _selectId = $"analyzer-{Guid.NewGuid():N}"[..20];
+
+    [Parameter] public string SelectedId { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "Analyzer";
+    [Parameter] public bool ShowCustomToggle { get; set; }
+    [Parameter] public EventCallback<string> OnAnalyzerChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await CuService.ListAnalyzerIdsAsync();
+        _customIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+    }
+
+    public async Task RefreshList()
+    {
+        var all = await CuService.ListAnalyzerIdsAsync();
+        _customIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+        StateHasChanged();
+    }
+
+    private async Task HandleChange(ChangeEventArgs e)
+    {
+        var newId = e.Value?.ToString() ?? "";
+        await OnAnalyzerChanged.InvokeAsync(newId);
+    }
+
+    private async Task HandleCustomInput(ChangeEventArgs e)
+    {
+        var newId = e.Value?.ToString() ?? "";
+        await OnAnalyzerChanged.InvokeAsync(newId);
+    }
+}

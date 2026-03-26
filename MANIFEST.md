@@ -1,6 +1,6 @@
 # Project Manifest — Azure Content Understanding Workshop
 
-> **Last updated:** 2026-03-26
+> **Last updated:** 2026-03-27
 
 ## Overview
 
@@ -19,7 +19,7 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 | `infra/deploy.tf` | Terraform — mirrors Bicep, single or cross-region | Done |
 | `infra/defaults-body.json` | PATCH body for CU model routing defaults | Done |
 | `infra/terraform.tfvars.example` | Example variable values | Done |
-| `src/CU_TestHarness/` | Blazor Server test harness — 11 pages, 6 workshop UCs | Done |
+| `src/CU_TestHarness/` | Blazor Server test harness — 6 pages, 5 shared components, 6 workshop UCs | Done |
 | `src/CU_TestHarness.Tests/` | xUnit unit tests (26 tests) | Done |
 | `notebook/CU-API-Testing-Guide.ipynb` | C# Polyglot Notebook — full CU REST API walkthrough | Done |
 | `notebook/CU-API-Testing-Guide-Python.ipynb` | Python notebook — same walkthrough | Done |
@@ -35,15 +35,25 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 
 ## Blazor Test Harness Features
 
+### Pages (6)
+
 - **Home** (`/`) — UC1–UC6 tile dashboard
+- **Analyzers** (`/analyzers`, `/schema-editor`) — Manage tab (browse/edit/delete/create analyzers, quick test) + Auto-Detect tab (upload samples → detect fields → generate & create analyzer). Covers UC1, UC2, UC6.
+- **Test Suite** (`/test`, `/validate`) — Test Suite mode (batch testing with expected values, auto-populate, semantic matching, UC3) + Cross-Doc Validation mode (N-document consistency matrix, UC5)
 - **Analyze** (`/analyze`) — file upload, field extraction, PDF viewer with bounding box overlays, NL query (UC4)
-- **Validate** (`/validate`) — multi-document validation with 3-pass field matching (UC5)
-- **Test Suite** (`/test`) — batch testing with expected values, auto-populate, semantic matching (UC3)
 - **Compare** (`/compare`) — CU vs DI side-by-side analysis
-- **Schema Builder** (`/schema-builder`) — upload samples, auto-detect fields, generate + create analyzer (UC1)
-- **Schema Editor** (`/schema-editor`) — template-based creation, browse/edit/delete analyzers (UC2)
-- **Feedback** (`/feedback`) — edit field descriptions + re-analyze to verify improvement (UC6)
 - **Settings** (`/settings`) — model profile selection, endpoint config, connection test
+
+### Shared Components (5)
+
+- **FileUploadArea** — drag-drop file upload with customizable hint, accepts, and multi-file support
+- **AnalyzerSelect** — analyzer dropdown with prebuilt/custom grouping and optional custom ID toggle
+- **FieldsTable** — field/value/confidence table with click-to-highlight support
+- **ResultsTabs** — tabbed results view (Fields, JSON, Markdown) with copy-to-clipboard
+- **CostCard** — cost estimate display card with configurable detail level
+
+### Other
+
 - **Architecture** (`/architecture.html`) — CU vs DI architecture comparison reference
 
 ## Model Profiles
@@ -80,4 +90,4 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 | 1 | Tag cleaned repo as v1.0 | Pending |
 | 2 | UC6 corrective feedback loop via CU Studio (arriving ~April 1) | Deferred |
 | 3 | Validate cost estimates against actual workshop usage | Pending |
-| 4 | UI improvements pass | Pending |
+| 4 | UI improvements pass — consolidated 11 pages → 6 pages + 5 shared components | Done |

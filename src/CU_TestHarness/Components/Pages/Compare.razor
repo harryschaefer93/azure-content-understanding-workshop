@@ -1,6 +1,7 @@
 @page "/compare"
 @using CU_TestHarness.Models
 @using CU_TestHarness.Services
+@using CU_TestHarness.Components.Shared
 @using Microsoft.Extensions.Options
 @inject ContentUnderstandingService CuService
 @inject DocumentIntelligenceService DiService
@@ -33,24 +34,14 @@
     }
 
     <div class="upload-section">
-        <div class="upload-area @(_isDragOver ? "drag-over" : "")"
-             @ondragenter="@(() => _isDragOver = true)"
-             @ondragleave="@(() => _isDragOver = false)"
-             @ondragover:preventDefault>
-            <InputFile OnChange="OnFileSelected"
-                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx,.mp3,.mp4,.wav,.webm" />
-            <div class="upload-prompt">
-                @if (_selectedFile is not null)
-                {
-                    <span class="file-name">@_selectedFile.Name (@FormatSize(_selectedFile.Size))</span>
-                }
-                else
-                {
-                    <span>Drag &amp; drop a file here, or <strong>click to browse</strong></span>
-                    <span class="hint">PDF, images, Office docs — up to @(CuOptions.CurrentValue.MaxFileSizeMB) MB</span>
-                }
-            </div>
-        </div>
+        <FileUploadArea Accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx,.mp3,.mp4,.wav,.webm"
+                        Hint="@($"PDF, images, Office docs \u2014 up to {CuOptions.CurrentValue.MaxFileSizeMB} MB")"
+                        OnFilesSelected="OnFileSelected">
+            @if (_selectedFile is not null)
+            {
+                <span class="file-name">@_selectedFile.Name (@FormatSize(_selectedFile.Size))</span>
+            }
+        </FileUploadArea>
 
         <div class="compare-controls">
             <div class="control-col">
@@ -156,10 +147,7 @@
                 {
                     @if (_cuResult.Cost is not null)
                     {
-                        <div class="cost-card @GetCostClass(_cuResult.Cost.EstimatedCost)">
-                            <span class="cost-amount">~$@_cuResult.Cost.EstimatedCost.ToString("F4")</span>
-                            <span class="cost-detail">@_cuResult.Cost.CostBreakdown</span>
-                        </div>
+                        <CostCard Cost="_cuResult.Cost" ShowPageCount="false" ShowTokens="false" />
                     }
 
                     @if (_cuResult.ErrorMessage is not null)
@@ -247,10 +235,7 @@
                 {
                     @if (_diResult.Cost is not null)
                     {
-                        <div class="cost-card @GetCostClass(_diResult.Cost.EstimatedCost)">
-                            <span class="cost-amount">~$@_diResult.Cost.EstimatedCost.ToString("F4")</span>
-                            <span class="cost-detail">@_diResult.Cost.CostBreakdown</span>
-                        </div>
+                        <CostCard Cost="_diResult.Cost" ShowPageCount="false" ShowTokens="false" />
                     }
 
                     @if (_diResult.ErrorMessage is not null)
@@ -434,7 +419,6 @@
 
 @code {
     private IBrowserFile? _selectedFile;
-    private bool _isDragOver;
     private bool _isCuAnalyzing;
     private bool _isDiAnalyzing;
     private string _cuAnalyzerId = "";
@@ -512,7 +496,6 @@
         _cuResult = null;
         _diResult = null;
         _fieldDiffs = [];
-        _isDragOver = false;
     }
 
     private async Task RunComparison()

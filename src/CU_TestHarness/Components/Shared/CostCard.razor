@@ -1,0 +1,29 @@
+@* Reusable cost estimate display card *@
+@using CU_TestHarness.Models
+
+@if (Cost is not null)
+{
+    <div class="cost-card @GetCostClass(Cost.EstimatedCost)">
+        @if (Label is not null) { <span class="cost-label">@Label</span> }
+        <span class="cost-amount">~$@Cost.EstimatedCost.ToString("F4")</span>
+        <span class="cost-detail">@Cost.CostBreakdown</span>
+        @if (ShowPageCount && Cost.PageCount > 0)
+        {
+            <span class="cost-detail">Pages: @Cost.PageCount</span>
+        }
+        @if (ShowTokens && Cost.TokensUsed > 0)
+        {
+            <span class="cost-detail">Tokens: @Cost.TokensUsed</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public CostEstimate? Cost { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool ShowPageCount { get; set; } = true;
+    [Parameter] public bool ShowTokens { get; set; } = true;
+
+    private static string GetCostClass(decimal cost) =>
+        cost < 0.01m ? "cost-green" : cost < 0.10m ? "cost-yellow" : "cost-orange";
+}
