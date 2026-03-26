@@ -22,3 +22,5 @@ __pycache__/
 # Personal / local config
 **/appsettings.Personal.json
 .github/agents/
+.github/copilot-instructions.md
+MANIFEST.md
