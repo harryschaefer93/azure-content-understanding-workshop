@@ -20,7 +20,7 @@ builder.Services.Configure<DocumentIntelligenceOptions>(
 // Register services
 builder.Services.AddSingleton<CostEstimator>();
 builder.Services.AddSingleton(new ModelProfileState(
-    builder.Configuration["ModelDeployments:DefaultCompletion"] ?? "gpt41-mini-canada",
+    builder.Configuration["ModelDeployments:DefaultCompletion"] ?? "gpt41-mini-standard",
     builder.Configuration["ModelDeployments:DefaultEmbedding"] ?? "ada-002"));
 builder.Services.AddHttpClient<ContentUnderstandingService>();
 builder.Services.AddHttpClient<DocumentIntelligenceService>();

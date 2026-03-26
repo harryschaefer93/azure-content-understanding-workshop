@@ -1,20 +1,18 @@
 # Example values for deploy.tf
 # Copy to terraform.tfvars (or pass with -var-file=terraform.tfvars).
 
+# ====================================================================
+# Single-Region Deployment (default)
+# One account hosts both CU endpoint and model deployments.
+# ====================================================================
+
 # Resource group
 resource_group_name     = "contoso-cu-rg"
-resource_group_location = "canadacentral"
+resource_group_location = "eastus"
 
-# AI Services account names (globally unique)
-# Naming convention:
-#   {prefix}-cu-{region}      -> Content Understanding endpoint host
-#   {prefix}-models-{region}  -> GPT/embedding deployment host
-cu_account_name     = "contoso-cu-cc"
-models_account_name = "contoso-models-ce"
-
-# Regions
-cu_location     = "canadacentral"
-models_location = "canadaeast"
+# AI Services account name (globally unique)
+cu_account_name = "contoso-cu"
+cu_location     = "eastus"
 
 # SKU
 sku = "S0"
@@ -28,12 +26,18 @@ embedding_ada_capacity       = 50
 embedding_3large_capacity    = 50
 embedding_3small_capacity    = 50
 
-# Required governance tags
-# Add/change keys to match client policy.
+# Tags
 tags = {
-  environment = "prod"
-  owner       = "ai-platform-team"
+  environment = "dev"
   project     = "content-understanding"
-  costCenter  = "12345"
-  dataClass   = "internal"
 }
+
+# ====================================================================
+# Cross-Region Deployment (optional)
+# Uncomment below to create a separate Models account in a second
+# region with managed-identity RBAC between CU and Models.
+# ====================================================================
+
+# cross_region        = true
+# models_account_name = "contoso-models"
+# models_location     = "canadaeast"

@@ -1,20 +1,25 @@
 # ====================================================================
-# Azure AI Content Understanding - Cross-Resource Deployment
+# Azure AI Content Understanding — Infrastructure Deployment
 # ====================================================================
 #
 # Single Terraform file deploying:
-#   1. Resource Group (created by Terraform)
-#   2. Content Understanding AI Services account (Canada Central) — hosts the CU endpoint
-#   3. Models AI Services account (Canada East) — hosts GPT + embedding model deployments
-#   4. Role assignment: CU managed identity → Cognitive Services User on Models account
+#   1. Resource Group
+#   2. Content Understanding AI Services account — hosts the CU endpoint
+#   3. (Optional) Models AI Services account — hosts GPT + embedding
+#      deployments in a separate region (cross-region mode)
+#   4. 7 model deployments (GPT + embedding)
+#   5. (Cross-region only) Role assignment: CU managed identity →
+#      Cognitive Services User on Models account
 #
-# Naming convention:  {prefix}-cu-{region}   for the CU service
-#                     {prefix}-models-{region} for the models host
+# Deployment modes:
+#   Single-region (default):  One account hosts both CU and models.
+#   Cross-region (optional):  Set cross_region = true to create a
+#                             separate Models account with RBAC.
 #
 # Usage:
 #   terraform init
-#   terraform plan  -var="cu_account_name=contoso-cu-cc" -var="models_account_name=contoso-models-ce"
-#   terraform apply -var="cu_account_name=contoso-cu-cc" -var="models_account_name=contoso-models-ce"
+#   terraform plan  -var="cu_account_name=contoso-cu"
+#   terraform apply -var="cu_account_name=contoso-cu"
 #
 # ====================================================================
 
@@ -45,11 +50,11 @@ variable "resource_group_name" {
 variable "resource_group_location" {
   description = "Azure location for the resource group."
   type        = string
-  default     = "canadacentral"
+  default     = "eastus"
 }
 
 variable "cu_account_name" {
-  description = "Globally unique name for the Content Understanding AI Services account (hosts the CU endpoint). Recommended pattern: {prefix}-cu-{region}. Example: contoso-cu-cc (2-64 chars)."
+  description = "Globally unique name for the Content Understanding AI Services account. Example: contoso-cu (2-64 chars)."
   type        = string
 
   validation {
@@ -59,29 +64,36 @@ variable "cu_account_name" {
 }
 
 variable "cu_location" {
-  description = "Location for the Content Understanding resource."
+  description = "Location for the Content Understanding resource. Must support Azure AI Content Understanding."
   type        = string
-  default     = "canadacentral"
+  default     = "eastus"
+}
+
+variable "cross_region" {
+  description = "Enable cross-region mode. When true, creates a separate Models account in models_location with managed-identity RBAC. When false (default), all resources share the CU account."
+  type        = bool
+  default     = false
 }
 
 variable "models_account_name" {
-  description = "Globally unique name for the Models AI Services account (hosts GPT + embedding deployments). Recommended pattern: {prefix}-models-{region}. Example: contoso-models-ce (2-64 chars)."
+  description = "Globally unique name for the Models AI Services account (cross-region only). Example: contoso-models (2-64 chars)."
   type        = string
+  default     = ""
 
   validation {
-    condition     = length(var.models_account_name) >= 2 && length(var.models_account_name) <= 64
-    error_message = "Account name must be 2-64 characters."
+    condition     = var.models_account_name == "" || (length(var.models_account_name) >= 2 && length(var.models_account_name) <= 64)
+    error_message = "Account name must be empty or 2-64 characters."
   }
 }
 
 variable "models_location" {
-  description = "Location for the Models resource."
+  description = "Location for the Models resource (cross-region only)."
   type        = string
-  default     = "canadaeast"
+  default     = ""
 }
 
 variable "sku" {
-  description = "SKU name for both accounts."
+  description = "SKU name for AI Services accounts."
   type        = string
   default     = "S0"
 }
@@ -93,25 +105,25 @@ variable "tags" {
 }
 
 variable "gpt41_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4.1 deployment."
+  description = "Capacity (1K TPM units) for gpt-4.1 GlobalStandard deployment."
   type        = number
   default     = 100
 }
 
 variable "gpt41_mini_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4.1-mini deployment."
+  description = "Capacity (1K TPM units) for gpt-4.1-mini GlobalStandard deployment."
   type        = number
   default     = 100
 }
 
 variable "gpt41_mini_standard_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4.1-mini Standard (Canada-guaranteed) deployment."
+  description = "Capacity (1K TPM units) for gpt-4.1-mini Standard (region-guaranteed) deployment."
   type        = number
   default     = 100
 }
 
 variable "gpt4o_standard_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4o Standard (Canada-guaranteed) deployment."
+  description = "Capacity (1K TPM units) for gpt-4o Standard (region-guaranteed) deployment."
   type        = number
   default     = 100
 }
@@ -135,6 +147,15 @@ variable "embedding_3small_capacity" {
 }
 
 # ====================================================================
+# Locals
+# ====================================================================
+
+locals {
+  models_account_id = var.cross_region ? azurerm_cognitive_account.models[0].id : azurerm_cognitive_account.cu.id
+  models_account_name = var.cross_region ? var.models_account_name : var.cu_account_name
+}
+
+# ====================================================================
 # Resource Group
 # ====================================================================
 
@@ -146,7 +167,7 @@ resource "azurerm_resource_group" "rg" {
 }
 
 # ====================================================================
-# Content Understanding AI Services Account (Canada Central)
+# Content Understanding AI Services Account
 # Hosts the CU endpoint — this is what the notebook / test harness calls.
 # ====================================================================
 
@@ -168,12 +189,14 @@ resource "azurerm_cognitive_account" "cu" {
 }
 
 # ====================================================================
-# Models AI Services Account (Canada East)
-# Hosts GPT-4.1, GPT-4.1-mini, and embedding model deployments.
+# Models AI Services Account (cross-region only)
+# Hosts GPT and embedding model deployments in a separate region.
 # CU calls into this account via its managed identity.
 # ====================================================================
 
 resource "azurerm_cognitive_account" "models" {
+  count = var.cross_region ? 1 : 0
+
   name                          = var.models_account_name
   location                      = var.models_location
   resource_group_name           = azurerm_resource_group.rg.name
@@ -192,11 +215,12 @@ resource "azurerm_cognitive_account" "models" {
 
 # ====================================================================
 # Model Deployments
+# Deployed on the Models account (cross-region) or CU account (single-region).
 # ====================================================================
 
 resource "azurerm_cognitive_deployment" "gpt41" {
   name                 = "gpt-41"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -211,7 +235,7 @@ resource "azurerm_cognitive_deployment" "gpt41" {
 
 resource "azurerm_cognitive_deployment" "gpt41_mini" {
   name                 = "gpt-41-mini"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -227,8 +251,8 @@ resource "azurerm_cognitive_deployment" "gpt41_mini" {
 }
 
 resource "azurerm_cognitive_deployment" "gpt41_mini_standard" {
-  name                 = "gpt-41-mini-ca"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  name                 = "gpt-41-mini-std"
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -244,8 +268,8 @@ resource "azurerm_cognitive_deployment" "gpt41_mini_standard" {
 }
 
 resource "azurerm_cognitive_deployment" "gpt4o_standard" {
-  name                 = "gpt-4o-ca"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  name                 = "gpt-4o-std"
+  cognitive_account_id = local.models_account_id
 
   model {
     format  = "OpenAI"
@@ -263,7 +287,7 @@ resource "azurerm_cognitive_deployment" "gpt4o_standard" {
 
 resource "azurerm_cognitive_deployment" "embedding_ada" {
   name                 = "text-embedding-ada-002"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -280,7 +304,7 @@ resource "azurerm_cognitive_deployment" "embedding_ada" {
 
 resource "azurerm_cognitive_deployment" "embedding_3large" {
   name                 = "text-embedding-3-large"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -297,7 +321,7 @@ resource "azurerm_cognitive_deployment" "embedding_3large" {
 
 resource "azurerm_cognitive_deployment" "embedding_3small" {
   name                 = "text-embedding-3-small"
-  cognitive_account_id = azurerm_cognitive_account.models.id
+  cognitive_account_id = local.models_account_id
 
   model {
     format = "OpenAI"
@@ -313,13 +337,15 @@ resource "azurerm_cognitive_deployment" "embedding_3small" {
 }
 
 # ====================================================================
-# Role Assignment: CU → Models (Cognitive Services User)
+# Role Assignment: CU → Models (cross-region only)
 # ====================================================================
 # Grants the CU resource's managed identity "Cognitive Services User"
 # on the Models account for Entra ID cross-resource authentication.
 
 resource "azurerm_role_assignment" "cu_to_models" {
-  scope                = azurerm_cognitive_account.models.id
+  count = var.cross_region ? 1 : 0
+
+  scope                = azurerm_cognitive_account.models[0].id
   role_definition_name = "Cognitive Services User"
   principal_id         = azurerm_cognitive_account.cu.identity[0].principal_id
   principal_type       = "ServicePrincipal"
@@ -341,16 +367,16 @@ output "cu_resource_id" {
 }
 
 output "models_endpoint" {
-  description = "Models account endpoint — used internally by CU via managed identity; also needed for AOAI connection name."
-  value       = azurerm_cognitive_account.models.endpoint
+  description = "Models endpoint — same as CU endpoint in single-region mode; separate in cross-region mode."
+  value       = var.cross_region ? azurerm_cognitive_account.models[0].endpoint : azurerm_cognitive_account.cu.endpoint
 }
 
 output "models_resource_id" {
-  description = "Resource ID of the Models account (hosts GPT + embedding deployments)."
-  value       = azurerm_cognitive_account.models.id
+  description = "Resource ID of the account hosting model deployments."
+  value       = local.models_account_id
 }
 
 output "models_connection_name" {
-  description = "AOAI connection name for defaults-body.json (account name without hyphens)."
-  value       = replace(var.models_account_name, "-", "")
+  description = "Connection name for defaults-body.json (account name without hyphens)."
+  value       = replace(local.models_account_name, "-", "")
 }

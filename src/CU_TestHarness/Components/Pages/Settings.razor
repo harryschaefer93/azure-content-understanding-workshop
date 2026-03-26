@@ -21,7 +21,7 @@
         <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem;">
             Choose the GPT model for custom analyzers.
             <strong>Standard</strong> guarantees inference stays in the deployment region.
-            <strong>Global Standard</strong> routes to the nearest available compute globally — data may leave Canada.
+            <strong>Global Standard</strong> routes to the nearest available compute globally — data may leave the deployed region.
         </p>
         <div class="model-profile-grid">
             @foreach (var profile in CompletionProfile.Available)
@@ -36,14 +36,14 @@
                         }
                         else
                         {
-                            <span class="badge-global" title="Inference may occur outside Canada">Global Standard</span>
+                            <span class="badge-global" title="Inference may occur outside the deployed region">Global Standard</span>
                         }
                     </div>
                     <div class="model-profile-details">
                         <span><strong>Model:</strong> @profile.ModelName</span>
                         <span><strong>Deployment:</strong> @profile.DeploymentName</span>
                         <span><strong>Region:</strong> @profile.Region</span>
-                        <span><strong>Residency:</strong> @(profile.DataResidencyGuaranteed ? "🍁 Guaranteed in Canada" : "🌐 May leave Canada")</span>
+                        <span><strong>Residency:</strong> @(profile.DataResidencyGuaranteed ? "🔒 Guaranteed in region" : "🌐 May leave region")</span>
                     </div>
                     <div class="model-profile-specs">
                         <span title="Maximum input context window">📏 @FormatTokenCount(profile.ContextWindow) context</span>
@@ -169,8 +169,8 @@
         <p><strong>Completion and embedding model</strong> changes take effect immediately for new analyzer creation.</p>
 
         <h3>Model Deployment Types</h3>
-        <p><strong>Global Standard</strong> — inference is routed to the nearest Azure region with available capacity. Offers the full GPT-4.1 model but data may be processed outside Canada.</p>
-        <p><strong>Standard</strong> — inference is guaranteed to stay within the deployment region. Both embedding models, GPT-4.1 Mini, and GPT-4o are available as Standard deployments in Canada East.</p>
+        <p><strong>Global Standard</strong> — inference is routed to the nearest Azure region with available capacity. Offers the full GPT-4.1 model but data may be processed outside the deployed region.</p>
+        <p><strong>Standard</strong> — inference is guaranteed to stay within the deployment region. Both embedding models, GPT-4.1 Mini, and GPT-4o are available as Standard deployments.</p>
 
         <h3>Authentication</h3>
         <p>Both CU and DI use <code>DefaultAzureCredential</code>:</p>

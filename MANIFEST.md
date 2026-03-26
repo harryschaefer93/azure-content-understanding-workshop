@@ -1,10 +1,10 @@
 # Project Manifest — Azure Content Understanding Workshop
 
-> **Last updated:** 2026-03-24
+> **Last updated:** 2026-03-25
 
 ## Overview
 
-Workshop accelerator for Azure AI Content Understanding (CU) and Document Intelligence (DI). Includes Terraform IaC, a Blazor Server test harness with 6 use cases, a C# Polyglot Notebook, and synthetic sample documents. All authentication uses Microsoft Entra ID (API keys disabled).
+Workshop accelerator for Azure AI Content Understanding (CU) and Document Intelligence (DI). Includes Bicep + Terraform IaC, a Blazor Server test harness with 6 use cases, C# and Python notebooks, and synthetic sample documents. All authentication uses Microsoft Entra ID (API keys disabled).
 
 > **Copilot:** See [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for session rules.
 
@@ -14,13 +14,23 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 
 | Path | Purpose | Status |
 |------|---------|--------|
-| `infra/deploy.tf` | Terraform — CU + Models accounts + RBAC + 7 model deployments | Done |
+| `infra/bicep/` | Bicep templates (source of truth) — single or cross-region deployment | Done |
+| `infra/bicep/azuredeploy.json` | Compiled ARM template for Deploy to Azure button | Done |
+| `infra/deploy.tf` | Terraform — mirrors Bicep, single or cross-region | Done |
 | `infra/defaults-body.json` | PATCH body for CU model routing defaults | Done |
 | `infra/terraform.tfvars.example` | Example variable values | Done |
 | `src/CU_TestHarness/` | Blazor Server test harness — 11 pages, 6 workshop UCs | Done |
-| `src/CU_TestHarness.Tests/` | xUnit unit tests (32 tests) | Done |
+| `src/CU_TestHarness.Tests/` | xUnit unit tests (26 tests) | Done |
 | `notebook/CU-API-Testing-Guide.ipynb` | C# Polyglot Notebook — full CU REST API walkthrough | Done |
+| `notebook/CU-API-Testing-Guide-Python.ipynb` | Python notebook — same walkthrough | Done |
 | `sample-docs/` | Synthetic PDFs (5 commitment letters, 2 title searches) + test manifests | Done |
+
+## Deployment Modes
+
+| Mode | Description | Default |
+|------|-------------|---------|
+| Single-region | One account hosts CU + models | Yes |
+| Cross-region | Separate Models account with managed-identity RBAC | Optional |
 
 ## Blazor Test Harness Features
 
@@ -49,12 +59,12 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 
 ## Known Issues / Decisions
 
+- **IaC source of truth**: Bicep is canonical. Terraform mirrors it. Future infra changes go to Bicep first.
 - **CU API template schemas**: `classify` and `generate` field methods may trigger `InvalidFieldSchema` errors. `extract`-only schemas work reliably.
 - **Custom analyzer `baseAnalyzerId`**: CU API requires root-level base IDs (`prebuilt-document`, `prebuilt-image`, etc.). Derived analyzers like `prebuilt-layout` are not valid.
 - **Analyzer ID naming**: CU API rejects hyphens (`-`). All templates use underscores (`_`). 3-layer client-side validation.
 - **CU defaults API version**: Must use `2025-11-01` (GA). Preview versions return 404 in some regions. Content-Type must be `application/json`.
 - **Foundry Portal connection**: Must be established manually before defaults PATCH works. Not automatable via IaC.
-- **GPT-4.1 Standard unavailable in Canada East**: Only GPT-4.1 Mini and GPT-4o can be deployed with Standard SKU (Canada data residency). GPT-4.1 full is Global Standard only.
 - **RBAC for developers**: `Cognitive Services User` role must be assigned on the CU resource for each user.
 - **Semantic matching**: Uses the active completion model (GPT-4.1 Mini default) via a separate Models endpoint for LLM-powered field comparison.
 - **Cost estimates**: Based on published pricing tables + actual token/page counts. Rates are hardcoded in `CostEstimator.cs`.
@@ -69,3 +79,4 @@ Workshop accelerator for Azure AI Content Understanding (CU) and Document Intell
 | 1 | Tag cleaned repo as v1.0 | Pending |
 | 2 | UC6 corrective feedback loop via CU Studio (arriving ~April 1) | Deferred |
 | 3 | Validate cost estimates against actual workshop usage | Pending |
+| 4 | UI improvements pass | Pending |

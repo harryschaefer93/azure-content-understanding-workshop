@@ -285,7 +285,7 @@
       <!-- CU Account Box -->
       <rect x="40" y="70" width="250" height="80" rx="8" fill="#2a2a3d" stroke="#89b4fa" stroke-width="2"/>
       <text x="165" y="94" text-anchor="middle" fill="#89b4fa" font-size="12" font-weight="700">CU Account</text>
-      <text x="165" y="112" text-anchor="middle" fill="#cdd6f4" font-size="11">Canada Central</text>
+      <text x="165" y="112" text-anchor="middle" fill="#cdd6f4" font-size="11">CU Region</text>
       <text x="165" y="128" text-anchor="middle" fill="#9399b2" font-size="10">Orchestrates analysis</text>
       <text x="165" y="142" text-anchor="middle" fill="#9399b2" font-size="10">Prebuilt + Custom analyzers</text>
       <!-- RBAC Arrow (CU → Models) -->
@@ -301,7 +301,7 @@
       <!-- Models Account Box -->
       <rect x="310" y="175" width="105" height="70" rx="8" fill="#2a2a3d" stroke="#94e2d5" stroke-width="2"/>
       <text x="362" y="198" text-anchor="middle" fill="#94e2d5" font-size="11" font-weight="700">Models Acct</text>
-      <text x="362" y="214" text-anchor="middle" fill="#cdd6f4" font-size="10">Canada East</text>
+      <text x="362" y="214" text-anchor="middle" fill="#cdd6f4" font-size="10">Models Region</text>
       <text x="362" y="228" text-anchor="middle" fill="#9399b2" font-size="9">GPT-4.1 · Ada-002</text>
       <text x="362" y="240" text-anchor="middle" fill="#9399b2" font-size="9">Embed-3-Large</text>
       <!-- Arrow down from CU -->
@@ -409,7 +409,7 @@
   <!-- CU Flow -->
   <div class="routing-col">
     <h3><span class="badge badge-cu">CU</span> Content Understanding</h3>
-    <div class="flow-diagram"><span class="hl-blue">User uploads doc</span> → <span class="hl-blue">CU Endpoint</span> (Canada Central)
+    <div class="flow-diagram"><span class="hl-blue">User uploads doc</span> → <span class="hl-blue">CU Endpoint</span> (CU Region)
 │
 ├─ <span class="hl-green">Content-only</span> (prebuilt-read / layout)
 │  └─ OCR only — <span class="hl-muted">no model call</span>
@@ -421,13 +421,13 @@
 │  ├─ CU reads defaults:
 │  │  <span class="hl-peach">prebuilt-analyzer-completion</span> → <span class="hl-teal">gpt-41</span>
 │  │  <span class="hl-peach">prebuilt-analyzer-embedding</span> → <span class="hl-teal">text-embedding-3-large</span>
-│  └─ Calls <span class="hl-teal">Models Account</span> (Canada East)
+│  └─ Calls <span class="hl-teal">Models Account</span> (Models Region)
 │     via <span class="hl-mauve">managed identity</span>
 │
 └─ <span class="hl-yellow">Custom analyzer</span> (user-defined schema)
    ├─ Reads <span class="hl-peach">"models"</span> block from analyzer JSON:
-   │  <span class="hl-peach">completion</span> → <span class="hl-teal">gpt-41-mini-ca</span>
-   └─ Calls <span class="hl-teal">Models Account</span> (Canada East)
+   │  <span class="hl-peach">completion</span> → <span class="hl-teal">gpt-41-mini-std</span>
+   └─ Calls <span class="hl-teal">Models Account</span> (Models Region)
       via <span class="hl-mauve">managed identity</span></div>
   </div>
 
@@ -483,9 +483,9 @@
   <tbody>
     <tr><td class="key">gpt-4.1</td><td class="val">yourconnectionname/gpt-41</td><td class="cat">Named — completion</td></tr>
     <tr><td class="key">gpt-4.1-mini</td><td class="val">yourconnectionname/gpt-41-mini</td><td class="cat">Named — completion</td></tr>
-    <tr><td class="key">gpt-4.1-mini-ca</td><td class="val">yourconnectionname/gpt-41-mini-ca</td><td class="cat">Named — completion (Canada)</td></tr>
-    <tr><td class="key">gpt-4o</td><td class="val">yourconnectionname/gpt-4o-ca</td><td class="cat">Named — completion</td></tr>
-    <tr><td class="key">gpt-4o-ca</td><td class="val">yourconnectionname/gpt-4o-ca</td><td class="cat">Named — completion (Canada)</td></tr>
+    <tr><td class="key">gpt-4.1-mini-std</td><td class="val">yourconnectionname/gpt-41-mini-std</td><td class="cat">Named — completion (Standard)</td></tr>
+    <tr><td class="key">gpt-4o</td><td class="val">yourconnectionname/gpt-4o-std</td><td class="cat">Named — completion</td></tr>
+    <tr><td class="key">gpt-4o-std</td><td class="val">yourconnectionname/gpt-4o-std</td><td class="cat">Named — completion (Standard)</td></tr>
     <tr><td class="key">text-embedding-ada-002</td><td class="val">yourconnectionname/text-embedding-ada-002</td><td class="cat">Named — embedding</td></tr>
     <tr><td class="key">text-embedding-3-large</td><td class="val">yourconnectionname/text-embedding-3-large</td><td class="cat">Named — embedding</td></tr>
     <tr class="divider"><td class="key">text-embedding-3-small</td><td class="val">yourconnectionname/text-embedding-3-small</td><td class="cat">Named — embedding</td></tr>
@@ -581,33 +581,33 @@
 <section id="residency">
 <h2>Data Residency</h2>
 <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
-  Model deployment type determines whether inference data stays within Canada. This matters for regulated workloads.
+  Model deployment type determines whether inference data stays within the deployed region. This matters for regulated workloads.
   <br><span style="font-size:0.82rem;">📖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment" target="_blank">Azure OpenAI deployment types</a> · <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#global-standard" target="_blank">Global Standard vs Standard</a></span>
 </p>
 
 <div class="residency-grid">
   <div class="residency-card">
-    <h3>🍁 Standard <span class="badge badge-std">Canada Guaranteed</span></h3>
-    <p>Inference stays in the deployed region (Canada East). Use for data-sovereign workloads.</p>
+    <h3>🔒 Standard <span class="badge badge-std">Region-Guaranteed</span></h3>
+    <p>Inference stays in the deployed region. Use for data-sovereign workloads.</p>
     <ul class="deploy-list">
-      <li><code>gpt-41-mini-ca</code> — GPT-4.1 Mini Standard (Canada East)</li>
-      <li><code>gpt-4o-ca</code> — GPT-4o Standard (Canada East)</li>
-      <li><code>text-embedding-ada-002</code> — Ada 002 (Canada East)</li>
-      <li><code>text-embedding-3-large</code> — Embedding 3 Large (Canada East)</li>
-      <li><code>text-embedding-3-small</code> — Embedding 3 Small (Canada East)</li>
+      <li><code>gpt-41-mini-std</code> — GPT-4.1 Mini Standard</li>
+      <li><code>gpt-4o-std</code> — GPT-4o Standard</li>
+      <li><code>text-embedding-ada-002</code> — Ada 002 Standard</li>
+      <li><code>text-embedding-3-large</code> — Embedding 3 Large Standard</li>
+      <li><code>text-embedding-3-small</code> — Embedding 3 Small Standard</li>
     </ul>
   </div>
 
   <div class="residency-card global">
-    <h3>🌐 Global Standard <span class="badge badge-global">May Leave Canada</span></h3>
-    <p>Inference may be routed outside Canada for capacity. Higher throughput, lower cost per token.</p>
+    <h3>🌐 Global Standard <span class="badge badge-global">May Leave Region</span></h3>
+    <p>Inference may be routed outside the deployed region for capacity. Higher throughput, lower cost per token.</p>
     <ul class="deploy-list">
       <li><code>gpt-41</code> — GPT-4.1 Global Standard</li>
       <li><code>gpt-41-mini</code> — GPT-4.1 Mini Global Standard</li>
     </ul>
     <p style="font-size:0.82rem; color:var(--yellow); margin-top:0.5rem;">
       ⚠ Prebuilt analyzer defaults currently point to Global Standard deployments (gpt-41, text-embedding-3-large).
-      For full Canada residency, update defaults to use the <code>-ca</code> variants.
+      For full region residency, update defaults to use the <code>-std</code> variants.
     </p>
   </div>
 </div>
@@ -658,7 +658,7 @@
     <ul style="list-style:none; padding:0; font-size:0.88rem;">
       <li style="padding:0.3rem 0;">🤖 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment" target="_blank">Models &amp; deployment types</a></li>
       <li style="padding:0.3rem 0;">🌐 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#global-standard" target="_blank">Global Standard vs Standard</a></li>
-      <li style="padding:0.3rem 0;">🍁 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#model-summary-table-and-region-availability" target="_blank">Region availability</a></li>
+      <li style="padding:0.3rem 0;">📍 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models-and-deployment#model-summary-table-and-region-availability" target="_blank">Region availability</a></li>
     </ul>
   </div>
 </div>
