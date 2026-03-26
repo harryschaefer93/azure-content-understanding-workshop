@@ -1,14 +1,14 @@
 {
-  "_comment": "Connection name must match the AOAI connected resource name set in the Foundry Portal (CU resource → Settings → Connected resources). Example: if your Models account is 'contoso-models-ce', the connection name is 'contosomodelsce' (hyphens removed).",
+  "_comment": "Connection name must match the AOAI connected resource name set in the Foundry Portal (CU resource > Settings > Connected resources). Example: if your account is 'contoso-cu', the connection name is 'contosocu' (hyphens removed). For single-region deployments, use the CU account name without hyphens.",
   "modelDeployments": {
     "gpt-4.1": "yourconnectionname/gpt-41",
     "gpt-4.1-mini": "yourconnectionname/gpt-41-mini",
-    "gpt-4.1-mini-ca": "yourconnectionname/gpt-41-mini-ca",
+    "gpt-4.1-mini-std": "yourconnectionname/gpt-41-mini-std",
     "text-embedding-ada-002": "yourconnectionname/text-embedding-ada-002",
     "text-embedding-3-large": "yourconnectionname/text-embedding-3-large",
     "text-embedding-3-small": "yourconnectionname/text-embedding-3-small",
-    "gpt-4o": "yourconnectionname/gpt-4o-ca",
-    "gpt-4o-ca": "yourconnectionname/gpt-4o-ca",
+    "gpt-4o": "yourconnectionname/gpt-4o-std",
+    "gpt-4o-std": "yourconnectionname/gpt-4o-std",
     "prebuilt-analyzer-completion": "yourconnectionname/gpt-41",
     "prebuilt-analyzer-embedding": "yourconnectionname/text-embedding-3-large",
     "prebuilt-analyzer-completion-mini": "yourconnectionname/gpt-41-mini"

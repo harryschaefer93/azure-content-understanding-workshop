@@ -56,13 +56,15 @@ Edit `appsettings.json` to change the endpoint, default analyzer, or max file si
   - **Raw JSON** — full API response
   - **Markdown** — extracted content in markdown format
 - **Settings page** — independent completion and embedding model pickers with deployment type badges (Standard vs Global Standard) and exact deployment region, CU connection test, endpoint config
-- **Completion models** — 3 deployment profiles:
-  - GPT-4.1 Global Standard (🌐 inference may leave Canada)
-  - GPT-4.1 Mini Global Standard (🌐 inference may leave Canada)
-  - GPT-4.1 Mini Standard (🍁 Canada East guaranteed)
-- **Embedding models** — 2 deployment profiles:
-  - Ada 002 Standard (Canada East)
-  - Embedding 3 Large Standard (Canada East)
+- **Completion models** — 4 deployment profiles:
+  - GPT-4.1 Global Standard (🌐 inference may leave deployed region)
+  - GPT-4.1 Mini Global Standard (🌐 inference may leave deployed region)
+  - GPT-4.1 Mini Standard (🔒 region-guaranteed)
+  - GPT-4o Standard (🔒 region-guaranteed)
+- **Embedding models** — 3 deployment profiles:
+  - Ada 002 Standard
+  - Embedding 3 Large Standard
+  - Embedding 3 Small Standard
 - **Per-use-case model override** — Schema Builder and Schema Editor let you choose a different completion + embedding combination for each analyzer
 - **Active model badge** — every page shows the current model profile and data residency status
 - **Architecture reference** — self-contained dark-themed page (`/architecture.html`) comparing CU vs DI: resource diagrams, analyzer taxonomy, model routing flow, PATCH defaults mapping, capability table, and data residency callout

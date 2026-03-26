@@ -26,7 +26,7 @@ public record CompletionProfile
             ModelName = "gpt-4.1",
             DeploymentType = "Global Standard",
             DataResidencyGuaranteed = false,
-            Region = "Canada East",
+            Region = "Global",
             ContextWindow = 1_048_576,
             MaxOutputTokens = 32_768,
             TrainingData = "Jun 2024"
@@ -39,33 +39,33 @@ public record CompletionProfile
             ModelName = "gpt-4.1-mini",
             DeploymentType = "Global Standard",
             DataResidencyGuaranteed = false,
-            Region = "Canada East",
+            Region = "Global",
             ContextWindow = 1_048_576,
             MaxOutputTokens = 32_768,
             TrainingData = "Jun 2024"
         },
         new()
         {
-            Id = "gpt41-mini-canada",
+            Id = "gpt41-mini-standard",
             DisplayName = "GPT-4.1 Mini",
-            DeploymentName = "gpt-41-mini-ca",
+            DeploymentName = "gpt-41-mini-std",
             ModelName = "gpt-4.1-mini",
             DeploymentType = "Standard",
             DataResidencyGuaranteed = true,
-            Region = "Canada East",
+            Region = "Deployed Region",
             ContextWindow = 1_048_576,
             MaxOutputTokens = 32_768,
             TrainingData = "Jun 2024"
         },
         new()
         {
-            Id = "gpt4o-canada",
+            Id = "gpt4o-standard",
             DisplayName = "GPT-4o",
-            DeploymentName = "gpt-4o-ca",
+            DeploymentName = "gpt-4o-std",
             ModelName = "gpt-4o",
             DeploymentType = "Standard",
             DataResidencyGuaranteed = true,
-            Region = "Canada East",
+            Region = "Deployed Region",
             ContextWindow = 128_000,
             MaxOutputTokens = 16_384,
             TrainingData = "Oct 2023"
@@ -96,7 +96,7 @@ public record EmbeddingProfile
             DeploymentName = "text-embedding-ada-002",
             ModelName = "text-embedding-ada-002",
             DeploymentType = "Standard",
-            Region = "Canada East",
+            Region = "Deployed Region",
             MaxTokens = 8_191,
             Dimensions = 1_536
         },
@@ -107,7 +107,7 @@ public record EmbeddingProfile
             DeploymentName = "text-embedding-3-large",
             ModelName = "text-embedding-3-large",
             DeploymentType = "Standard",
-            Region = "Canada East",
+            Region = "Deployed Region",
             MaxTokens = 8_191,
             Dimensions = 3_072
         },
@@ -118,7 +118,7 @@ public record EmbeddingProfile
             DeploymentName = "text-embedding-3-small",
             ModelName = "text-embedding-3-small",
             DeploymentType = "Standard",
-            Region = "Canada East",
+            Region = "Deployed Region",
             MaxTokens = 8_191,
             Dimensions = 1_536
         }
@@ -147,7 +147,7 @@ public record ModelProfile
     public string Region => Completion.Region;
 
     /// <summary>
-    /// All available combinations (cross-product of completion × embedding profiles).
+    /// All available combinations (cross-product of completion x embedding profiles).
     /// Used by SchemaBuilder/SchemaEditor per-page profile selector.
     /// </summary>
     public static IReadOnlyList<ModelProfile> AvailableProfiles { get; } =

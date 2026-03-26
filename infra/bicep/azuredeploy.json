@@ -1,0 +1,676 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "5278515253437130362"
+    }
+  },
+  "parameters": {
+    "prefix": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 50,
+      "metadata": {
+        "description": "Resource naming prefix. Used to generate account names: {prefix}-cu and {prefix}-models."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Primary Azure region for the Content Understanding account. Must support Azure AI Content Understanding."
+      }
+    },
+    "modelsLocation": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional: Azure region for model deployments. When set to a different region than location, enables cross-region mode with a separate Models account and managed-identity RBAC. Leave empty for single-region deployment."
+      }
+    },
+    "sku": {
+      "type": "string",
+      "defaultValue": "S0",
+      "metadata": {
+        "description": "SKU for AI Services accounts."
+      }
+    },
+    "gpt41Capacity": {
+      "type": "int",
+      "defaultValue": 100,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for gpt-4.1 GlobalStandard deployment."
+      }
+    },
+    "gpt41MiniCapacity": {
+      "type": "int",
+      "defaultValue": 100,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for gpt-4.1-mini GlobalStandard deployment."
+      }
+    },
+    "gpt41MiniStandardCapacity": {
+      "type": "int",
+      "defaultValue": 100,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for gpt-4.1-mini Standard (region-guaranteed) deployment."
+      }
+    },
+    "gpt4oStandardCapacity": {
+      "type": "int",
+      "defaultValue": 100,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for gpt-4o Standard (region-guaranteed) deployment."
+      }
+    },
+    "embeddingAdaCapacity": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for text-embedding-ada-002 deployment."
+      }
+    },
+    "embedding3LargeCapacity": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for text-embedding-3-large deployment."
+      }
+    },
+    "embedding3SmallCapacity": {
+      "type": "int",
+      "defaultValue": 50,
+      "metadata": {
+        "description": "Capacity (1K TPM units) for text-embedding-3-small deployment."
+      }
+    },
+    "tags": {
+      "type": "object",
+      "defaultValue": {},
+      "metadata": {
+        "description": "Tags to apply to all resources."
+      }
+    }
+  },
+  "variables": {
+    "crossRegion": "[and(not(empty(parameters('modelsLocation'))), not(equals(parameters('modelsLocation'), parameters('location'))))]",
+    "cuAccountName": "[format('{0}-cu', parameters('prefix'))]",
+    "modelsAccountName": "[if(variables('crossRegion'), format('{0}-models', parameters('prefix')), variables('cuAccountName'))]",
+    "effectiveModelsLocation": "[if(variables('crossRegion'), parameters('modelsLocation'), parameters('location'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-cu-account",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('cuAccountName')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "sku": {
+            "value": "[parameters('sku')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "17568678319326445239"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64,
+              "metadata": {
+                "description": "Globally unique name for the AI Services account (2-64 chars)."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the account."
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "S0",
+              "metadata": {
+                "description": "SKU name."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2024-10-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "kind": "AIServices",
+              "sku": {
+                "name": "[parameters('sku')]"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('name')]",
+                "publicNetworkAccess": "Enabled",
+                "disableLocalAuth": true
+              },
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "endpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the AI Services account."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-10-01').endpoint]"
+            },
+            "id": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the AI Services account."
+              },
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the system-assigned managed identity."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-10-01', 'full').identity.principalId]"
+            },
+            "accountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Account name (for use in deployment references)."
+              },
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "condition": "[variables('crossRegion')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-models-account",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[variables('modelsAccountName')]"
+          },
+          "location": {
+            "value": "[variables('effectiveModelsLocation')]"
+          },
+          "sku": {
+            "value": "[parameters('sku')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "17568678319326445239"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64,
+              "metadata": {
+                "description": "Globally unique name for the AI Services account (2-64 chars)."
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the account."
+              }
+            },
+            "sku": {
+              "type": "string",
+              "defaultValue": "S0",
+              "metadata": {
+                "description": "SKU name."
+              }
+            },
+            "tags": {
+              "type": "object",
+              "defaultValue": {},
+              "metadata": {
+                "description": "Tags to apply."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts",
+              "apiVersion": "2024-10-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "kind": "AIServices",
+              "sku": {
+                "name": "[parameters('sku')]"
+              },
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "customSubDomainName": "[parameters('name')]",
+                "publicNetworkAccess": "Enabled",
+                "disableLocalAuth": true
+              },
+              "tags": "[parameters('tags')]"
+            }
+          ],
+          "outputs": {
+            "endpoint": {
+              "type": "string",
+              "metadata": {
+                "description": "Endpoint URL of the AI Services account."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-10-01').endpoint]"
+            },
+            "id": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the AI Services account."
+              },
+              "value": "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
+            },
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the system-assigned managed identity."
+              },
+              "value": "[reference(resourceId('Microsoft.CognitiveServices/accounts', parameters('name')), '2024-10-01', 'full').identity.principalId]"
+            },
+            "accountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Account name (for use in deployment references)."
+              },
+              "value": "[parameters('name')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-models",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "accountName": "[if(variables('crossRegion'), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-models-account'), '2025-04-01').outputs.accountName.value), createObject('value', reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.accountName.value))]",
+          "gpt41Capacity": {
+            "value": "[parameters('gpt41Capacity')]"
+          },
+          "gpt41MiniCapacity": {
+            "value": "[parameters('gpt41MiniCapacity')]"
+          },
+          "gpt41MiniStandardCapacity": {
+            "value": "[parameters('gpt41MiniStandardCapacity')]"
+          },
+          "gpt4oStandardCapacity": {
+            "value": "[parameters('gpt4oStandardCapacity')]"
+          },
+          "embeddingAdaCapacity": {
+            "value": "[parameters('embeddingAdaCapacity')]"
+          },
+          "embedding3LargeCapacity": {
+            "value": "[parameters('embedding3LargeCapacity')]"
+          },
+          "embedding3SmallCapacity": {
+            "value": "[parameters('embedding3SmallCapacity')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "2222709250589305589"
+            }
+          },
+          "parameters": {
+            "accountName": {
+              "type": "string",
+              "metadata": {
+                "description": "Name of the AI Services account to deploy models on."
+              }
+            },
+            "gpt41Capacity": {
+              "type": "int",
+              "defaultValue": 100,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for gpt-4.1 GlobalStandard deployment."
+              }
+            },
+            "gpt41MiniCapacity": {
+              "type": "int",
+              "defaultValue": 100,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for gpt-4.1-mini GlobalStandard deployment."
+              }
+            },
+            "gpt41MiniStandardCapacity": {
+              "type": "int",
+              "defaultValue": 100,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for gpt-4.1-mini Standard deployment."
+              }
+            },
+            "gpt4oStandardCapacity": {
+              "type": "int",
+              "defaultValue": 100,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for gpt-4o Standard deployment."
+              }
+            },
+            "embeddingAdaCapacity": {
+              "type": "int",
+              "defaultValue": 50,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for text-embedding-ada-002 Standard deployment."
+              }
+            },
+            "embedding3LargeCapacity": {
+              "type": "int",
+              "defaultValue": 50,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for text-embedding-3-large Standard deployment."
+              }
+            },
+            "embedding3SmallCapacity": {
+              "type": "int",
+              "defaultValue": 50,
+              "metadata": {
+                "description": "Capacity (1K TPM units) for text-embedding-3-small Standard deployment."
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'gpt-41')]",
+              "sku": {
+                "name": "GlobalStandard",
+                "capacity": "[parameters('gpt41Capacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4.1"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'gpt-41-mini')]",
+              "sku": {
+                "name": "GlobalStandard",
+                "capacity": "[parameters('gpt41MiniCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4.1-mini"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'gpt-41')]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'gpt-41-mini-std')]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('gpt41MiniStandardCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4.1-mini"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'gpt-41-mini')]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'gpt-4o-std')]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('gpt4oStandardCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "gpt-4o",
+                  "version": "2024-11-20"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'gpt-41-mini-std')]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'text-embedding-ada-002')]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('embeddingAdaCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "text-embedding-ada-002"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'gpt-4o-std')]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'text-embedding-3-large')]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('embedding3LargeCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "text-embedding-3-large"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'text-embedding-ada-002')]"
+              ]
+            },
+            {
+              "type": "Microsoft.CognitiveServices/accounts/deployments",
+              "apiVersion": "2024-10-01",
+              "name": "[format('{0}/{1}', parameters('accountName'), 'text-embedding-3-small')]",
+              "sku": {
+                "name": "Standard",
+                "capacity": "[parameters('embedding3SmallCapacity')]"
+              },
+              "properties": {
+                "model": {
+                  "format": "OpenAI",
+                  "name": "text-embedding-3-small"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('accountName'), 'text-embedding-3-large')]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-cu-account')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-models-account')]"
+      ]
+    },
+    {
+      "condition": "[variables('crossRegion')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "deploy-rbac",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "principalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.principalId.value]"
+          },
+          "modelsAccountId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-models-account'), '2025-04-01').outputs.id.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "11831053109338674128"
+            }
+          },
+          "parameters": {
+            "principalId": {
+              "type": "string",
+              "metadata": {
+                "description": "Principal ID of the CU account managed identity."
+              }
+            },
+            "modelsAccountId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Models account (scope for the role assignment)."
+              }
+            }
+          },
+          "variables": {
+            "cognitiveServicesUserRoleId": "a97b65f3-24c7-4388-baec-2e87135dc908"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.CognitiveServices/accounts', last(split(parameters('modelsAccountId'), '/')))]",
+              "name": "[guid(parameters('modelsAccountId'), parameters('principalId'), variables('cognitiveServicesUserRoleId'))]",
+              "properties": {
+                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('cognitiveServicesUserRoleId'))]",
+                "principalId": "[parameters('principalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-cu-account')]",
+        "[resourceId('Microsoft.Resources/deployments', 'deploy-models-account')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "cuEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "CU endpoint URL — use in notebooks, test harness, and curl commands."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.endpoint.value]"
+    },
+    "cuResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the Content Understanding account."
+      },
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.id.value]"
+    },
+    "modelsEndpoint": {
+      "type": "string",
+      "metadata": {
+        "description": "Models endpoint — same as CU endpoint in single-region mode; separate in cross-region mode."
+      },
+      "value": "[if(variables('crossRegion'), reference(resourceId('Microsoft.Resources/deployments', 'deploy-models-account'), '2025-04-01').outputs.endpoint.value, reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.endpoint.value)]"
+    },
+    "modelsResourceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the account hosting model deployments."
+      },
+      "value": "[if(variables('crossRegion'), reference(resourceId('Microsoft.Resources/deployments', 'deploy-models-account'), '2025-04-01').outputs.id.value, reference(resourceId('Microsoft.Resources/deployments', 'deploy-cu-account'), '2025-04-01').outputs.id.value)]"
+    },
+    "modelsConnectionName": {
+      "type": "string",
+      "metadata": {
+        "description": "Connection name for defaults-body.json (account name without hyphens). For cross-region, this is the Models account name; for single-region, this is the CU account name."
+      },
+      "value": "[replace(variables('modelsAccountName'), '-', '')]"
+    }
+  }
+}
