@@ -1,0 +1,69 @@
+@* Reusable result tabs: Fields / Raw JSON / Markdown *@
+@using CU_TestHarness.Models
+@using CU_TestHarness.Components.Shared
+
+<div class="tabs">
+    <button class="tab @(_activeTab == "fields" ? "active" : "")" @onclick='() => _activeTab = "fields"'>@FieldsLabel</button>
+    <button class="tab @(_activeTab == "json" ? "active" : "")" @onclick='() => _activeTab = "json"'>@JsonLabel</button>
+    @if (ShowMarkdown)
+    {
+        <button class="tab @(_activeTab == "markdown" ? "active" : "")" @onclick='() => _activeTab = "markdown"'>Markdown</button>
+    }
+</div>
+
+<div class="tab-content">
+    @if (_activeTab == "fields")
+    {
+        <FieldsTable Fields="Fields"
+                     ShowType="ShowFieldType"
+                     HighlightedFieldName="@HighlightedFieldName"
+                     OnFieldClicked="OnFieldClicked"
+                     EmptyMessage="@FieldsEmptyMessage" />
+    }
+    else if (_activeTab == "json")
+    {
+        <div class="json-wrapper">
+            <button class="btn-copy-json @(_jsonCopied ? "copied" : "")" @onclick="CopyJson">@(_jsonCopied ? "Copied!" : "Copy")</button>
+            <pre class="json-output">@(RawJson ?? "No response body.")</pre>
+        </div>
+    }
+    else if (_activeTab == "markdown")
+    {
+        <pre class="markdown-output">@(Markdown ?? "No markdown content returned.")</pre>
+    }
+</div>
+
+@code {
+    private string _activeTab = "fields";
+    private bool _jsonCopied;
+
+    [Parameter] public List<ExtractedField> Fields { get; set; } = [];
+    [Parameter] public string? RawJson { get; set; }
+    [Parameter] public string? Markdown { get; set; }
+    [Parameter] public bool ShowMarkdown { get; set; } = true;
+    [Parameter] public bool ShowFieldType { get; set; }
+    [Parameter] public string? HighlightedFieldName { get; set; }
+    [Parameter] public EventCallback<string> OnFieldClicked { get; set; }
+    [Parameter] public string FieldsLabel { get; set; } = "Fields";
+    [Parameter] public string JsonLabel { get; set; } = "Raw JSON";
+    [Parameter] public string FieldsEmptyMessage { get; set; } = "No extracted fields.";
+
+    [Parameter] public string DefaultTab { get; set; } = "fields";
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        _activeTab = DefaultTab;
+    }
+
+    private async Task CopyJson()
+    {
+        if (RawJson is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", RawJson);
+        _jsonCopied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _jsonCopied = false;
+    }
+}

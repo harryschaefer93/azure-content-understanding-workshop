@@ -1,0 +1,41 @@
+@* Reusable drag-and-drop file upload area *@
+
+<div class="upload-area @(_isDragOver ? "drag-over" : "")" style="@Style"
+     @ondragenter="@(() => _isDragOver = true)"
+     @ondragleave="@(() => _isDragOver = false)"
+     @ondragover:preventDefault>
+    <InputFile OnChange="HandleFilesSelected"
+               multiple="@Multiple"
+               accept="@Accept" />
+    <div class="upload-prompt">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            <span>Drag &amp; drop @(Multiple ? "files" : "a file") here, or <strong>click to browse</strong></span>
+            @if (Hint is not null)
+            {
+                <span class="hint">@Hint</span>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private bool _isDragOver;
+
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public string Accept { get; set; } = ".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
+
+    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
+    {
+        _isDragOver = false;
+        await OnFilesSelected.InvokeAsync(e);
+    }
+}

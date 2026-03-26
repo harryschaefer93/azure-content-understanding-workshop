@@ -1,4 +1,5 @@
 @page "/test"
+@page "/validate"
 @using CU_TestHarness.Models
 @using CU_TestHarness.Services
 @using Microsoft.Extensions.Options
@@ -8,12 +9,13 @@
 @inject CostEstimator CostEstimator
 @inject IOptions<ContentUnderstandingOptions> Options
 @inject ModelProfileState ProfileState
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 
-<PageTitle>Test Suite — CU Test Harness</PageTitle>
+<PageTitle>Test &amp; Validate — CU Test Harness</PageTitle>
 
 <div class="container test-container">
-    <h1>Automated Analyzer Testing</h1>
+    <h1>Test &amp; Validate</h1>
     <div class="model-banner">
         <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
         @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
@@ -21,6 +23,15 @@
         else
         { <span class="badge-global">🌐 Global</span> }
     </div>
+
+    @* ── Mode Toggle ── *@
+    <div class="matching-settings" style="margin-bottom:0.5rem;">
+        <button class="tab @(_mode == "test" ? "active" : "")" @onclick='() => _mode = "test"'>Test Suite</button>
+        <button class="tab @(_mode == "validate" ? "active" : "")" @onclick='() => _mode = "validate"'>Cross-Doc Validation</button>
+    </div>
+
+    @if (_mode == "test")
+    {
     <p class="subtitle">Batch-test an analyzer against multiple documents with expected field values. Upload test docs, define what you expect, and get a pass/fail report.</p>
 
     @* ── Matching settings ── *@
@@ -311,9 +322,267 @@
             }
         </div>
     }
+    } @* end test mode *@
+
+    @* ═══════════════════════════════════════════════════════════════════
+       VALIDATION MODE
+       ═══════════════════════════════════════════════════════════════════ *@
+    @if (_mode == "validate")
+    {
+    <p class="subtitle">Upload multiple documents of the same type and compare extracted fields across all of them. Discrepancies are highlighted in a cross-document matrix.</p>
+
+    <div class="upload-section">
+        <div class="analyzer-select">
+            <label for="v-analyzer">Analyzer</label>
+            <select id="v-analyzer" @bind="_vAnalyzerId">
+                <optgroup label="Content Extraction (OCR only, no fields)">
+                    <option value="prebuilt-read">prebuilt-read</option>
+                    <option value="prebuilt-layout">prebuilt-layout</option>
+                </optgroup>
+                <optgroup label="Base (content only — use as parent for custom)">
+                    <option value="prebuilt-document">prebuilt-document</option>
+                </optgroup>
+                <optgroup label="Domain-Specific (built-in field schemas)">
+                    <option value="prebuilt-invoice">prebuilt-invoice</option>
+                    <option value="prebuilt-receipt">prebuilt-receipt</option>
+                    <option value="prebuilt-idDocument">prebuilt-idDocument</option>
+                    <option value="prebuilt-creditCard">prebuilt-creditCard</option>
+                    <option value="prebuilt-contract">prebuilt-contract</option>
+                    <option value="prebuilt-utilityBill">prebuilt-utilityBill</option>
+                    <option value="prebuilt-payStub.us">prebuilt-payStub.us</option>
+                    <option value="prebuilt-healthInsuranceCard.us">prebuilt-healthInsuranceCard.us</option>
+                </optgroup>
+                <optgroup label="Utility (generic field extraction)">
+                    <option value="prebuilt-documentFields">prebuilt-documentFields</option>
+                    <option value="prebuilt-documentFieldSchema">prebuilt-documentFieldSchema</option>
+                </optgroup>
+                <optgroup label="RAG (LLM + Embeddings)">
+                    <option value="prebuilt-documentSearch">prebuilt-documentSearch</option>
+                    <option value="prebuilt-imageSearch">prebuilt-imageSearch</option>
+                </optgroup>
+                @if (_customAnalyzerIds.Count > 0)
+                {
+                    <optgroup label="Custom">
+                        @foreach (var id in _customAnalyzerIds)
+                        {
+                            <option value="@id">@id</option>
+                        }
+                    </optgroup>
+                }
+            </select>
+        </div>
+
+        @* ── Dynamic N-doc upload ── *@
+        <div class="doc-slots">
+            @for (int i = 0; i < _vDocSlots.Count; i++)
+            {
+                var idx = i;
+                var slot = _vDocSlots[idx];
+                <div class="doc-slot">
+                    <div class="doc-label" style="display:flex;justify-content:space-between;align-items:center;">
+                        Document @(idx + 1)
+                        @if (_vDocSlots.Count > 2)
+                        {
+                            <button class="btn-remove" @onclick="() => RemoveVDocSlot(idx)" title="Remove">✕</button>
+                        }
+                    </div>
+                    <div class="upload-area @(_vDragOver == idx ? "drag-over" : "")" style="padding:1rem;"
+                         @ondragenter="@(() => _vDragOver = idx)"
+                         @ondragleave="@(() => { if (_vDragOver == idx) _vDragOver = -1; })"
+                         @ondragover:preventDefault>
+                        <InputFile OnChange="e => OnVDocFileSelected(e, idx)"
+                                   accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+                        <div class="upload-prompt">
+                            @if (slot.File is not null)
+                            {
+                                <span class="file-name">@slot.File.Name (@VFormatSize(slot.File.Size))</span>
+                            }
+                            else
+                            {
+                                <span>Drag &amp; drop or <strong>browse</strong></span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+            <button class="btn-add-doc" @onclick="AddVDocSlot">+ Add Document</button>
+        </div>
+
+        <button class="btn-analyze" @onclick="RunValidation"
+                disabled="@(_vDocSlots.Count(s => s.File is not null) < 2 || _isValidating)">
+            @if (_isValidating)
+            {
+                <span class="spinner"></span> <span>Validating @_vCompletedCount / @_vDocSlots.Count(s => s.File is not null)…</span>
+            }
+            else
+            {
+                <span>Validate All (@_vDocSlots.Count(s => s.File is not null) docs)</span>
+            }
+        </button>
+        @if (_isValidating)
+        {
+            var total = _vDocSlots.Count(s => s.File is not null);
+            var pct = total > 0 ? (int)((double)_vCompletedCount / total * 100) : 0;
+            <div class="progress-bar"><div class="progress-fill" style="width:@(pct)%"></div></div>
+        }
+    </div>
+
+    @* ── Validation Results ── *@
+    @if (_nDocResult is not null && _nDocResult.DocResults.Count > 0)
+    {
+        @if (_nDocResult.FieldMatrix.Count > 0)
+        {
+            <div class="results-section">
+                <div class="matrix-summary">
+                    <div class="matrix-stat stat-consistent">
+                        <span class="stat-value">@_nDocResult.ConsistentFieldCount</span>
+                        <span class="stat-label">Consistent</span>
+                    </div>
+                    <div class="matrix-stat stat-discrepancy">
+                        <span class="stat-value">@_nDocResult.DiscrepancyCount</span>
+                        <span class="stat-label">Discrepancies</span>
+                    </div>
+                    <div class="matrix-stat">
+                        <span class="stat-value">@_nDocResult.FieldMatrix.Count</span>
+                        <span class="stat-label">Total Fields</span>
+                    </div>
+                    <div class="matrix-stat">
+                        <span class="stat-value">@_nDocResult.DocResults.Count</span>
+                        <span class="stat-label">Documents</span>
+                    </div>
+                </div>
+
+                <h2>Cross-Document Field Matrix</h2>
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem;">
+                    Green cells match the consensus value. Red cells are outliers that differ from the majority.
+                </p>
+                <div style="overflow-x:auto;">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr>
+                                <th>Field</th>
+                                @for (int i = 0; i < _nDocResult.DocResults.Count; i++)
+                                {
+                                    <th title="@_nDocResult.DocResults[i].FileName">Doc @(i + 1)</th>
+                                }
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _nDocResult.FieldMatrix)
+                            {
+                                <tr>
+                                    <td class="field-name">@row.FieldName</td>
+                                    @for (int i = 0; i < row.Values.Count; i++)
+                                    {
+                                        <td class="@(row.IsOutlier(i) ? "outlier" : (row.IsConsistent ? "consensus" : ""))">
+                                            @(row.Values[i] ?? "—")
+                                            @{ var conf = row.Confidences[i]; }
+                                            @if (conf.HasValue)
+                                            {
+                                                <br/><span class="@VGetConfidenceClass(conf)" style="font-size:0.75rem;">@($"{conf.Value:P0}")</span>
+                                            }
+                                        </td>
+                                    }
+                                    <td class="match-cell">
+                                        @if (row.IsConsistent)
+                                        {
+                                            <span class="badge-match">Consistent</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge-diff">Discrepancy</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="info-banner">No extracted fields were found. Try a <strong>domain-specific</strong> or <strong>custom</strong> analyzer to extract structured fields.</div>
+        }
+
+        @* ── Per-Document Details (collapsible) ── *@
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:1rem;margin-top:1.5rem;">
+            @for (int i = 0; i < _nDocResult.DocResults.Count; i++)
+            {
+                var doc = _nDocResult.DocResults[i];
+                var label = $"Document {i + 1}";
+                <details class="doc-details">
+                    <summary>
+                        <strong>@label</strong> — @doc.FileName
+                        <span class="status @doc.Status.ToLowerInvariant()">@doc.Status</span>
+                        @if (doc.Duration.HasValue)
+                        {
+                            <span class="duration">@doc.Duration.Value.TotalSeconds.ToString("F1")s</span>
+                        }
+                        @if (doc.Cost is not null)
+                        {
+                            <span class="cost-inline">~$@doc.Cost.EstimatedCost.ToString("F4")</span>
+                        }
+                    </summary>
+                    @if (doc.ErrorMessage is not null)
+                    {
+                        <div class="error-box"><pre>@doc.ErrorMessage</pre></div>
+                    }
+                    else
+                    {
+                        var currentLabel = label;
+                        <div class="tabs">
+                            <button class="tab @(GetVDocTab(currentLabel) == "fields" ? "active" : "")" @onclick='() => SetVDocTab(currentLabel, "fields")'>Fields (@doc.Fields.Count)</button>
+                            <button class="tab @(GetVDocTab(currentLabel) == "json" ? "active" : "")" @onclick='() => SetVDocTab(currentLabel, "json")'>Raw JSON</button>
+                            @if (!string.IsNullOrEmpty(doc.Markdown))
+                            {
+                                <button class="tab @(GetVDocTab(currentLabel) == "markdown" ? "active" : "")" @onclick='() => SetVDocTab(currentLabel, "markdown")'>Markdown</button>
+                            }
+                        </div>
+                        <div class="tab-content">
+                            @if (GetVDocTab(currentLabel) == "fields")
+                            {
+                                @if (doc.Fields.Count > 0)
+                                {
+                                    <table class="fields-table">
+                                        <thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var f in doc.Fields)
+                                            {
+                                                <tr>
+                                                    <td class="field-name">@f.Name</td>
+                                                    <td>@(f.Value ?? "—")</td>
+                                                    <td class="field-confidence"><span class="@VGetConfidenceClass(f.Confidence)">@(f.Confidence.HasValue ? $"{f.Confidence.Value:P0}" : "—")</span></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                }
+                                else { <p class="no-data">No extracted fields</p> }
+                            }
+                            else if (GetVDocTab(currentLabel) == "json")
+                            {
+                                <div class="json-wrapper">
+                                    <button class="btn-copy-json" @onclick="() => CopyVDocJson(doc.RawJson)">Copy</button>
+                                    <pre class="json-output">@(doc.RawJson ?? "—")</pre>
+                                </div>
+                            }
+                            else
+                            {
+                                <pre class="markdown-output">@(doc.Markdown ?? "—")</pre>
+                            }
+                        </div>
+                    }
+                </details>
+            }
+        </div>
+    }
+    } @* end validate mode *@
 </div>
 
 @code {
+    private string _mode = "test"; // "test" or "validate"
     private string _analyzerId = "";
     private bool _isDragOver;
     private List<string> _customAnalyzerIds = [];
@@ -328,9 +597,25 @@
     private int _prefillDoneCount;
     private bool _useSemanticMatching = true;
 
+    // Validation mode state
+    private string _vAnalyzerId = "";
+    private int _vDragOver = -1;
+    private List<VDocSlot> _vDocSlots = [new(), new()];
+    private bool _isValidating;
+    private int _vCompletedCount;
+    private NDocValidationViewModel? _nDocResult;
+    private Dictionary<string, string> _vDocTabs = [];
+
+    private class VDocSlot
+    {
+        public IBrowserFile? File { get; set; }
+        public byte[]? Bytes { get; set; }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         _analyzerId = Options.Value.DefaultAnalyzerId;
+        _vAnalyzerId = Options.Value.DefaultAnalyzerId;
         var all = await CuService.ListAnalyzerIdsAsync();
         _customAnalyzerIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
         await LoadSchemaFieldNames();
@@ -673,4 +958,197 @@
             not null => "confidence-low",
             _ => ""
         };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // VALIDATION MODE METHODS
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task OnVDocFileSelected(InputFileChangeEventArgs e, int slotIndex)
+    {
+        if (slotIndex < 0 || slotIndex >= _vDocSlots.Count) return;
+        _vDragOver = -1;
+        var file = e.File;
+        var maxSize = Options.Value.MaxFileSizeMB * 1024L * 1024L;
+        await using var stream = file.OpenReadStream(maxSize);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _vDocSlots[slotIndex] = new VDocSlot { File = file, Bytes = ms.ToArray() };
+        _nDocResult = null;
+    }
+
+    private void AddVDocSlot() => _vDocSlots.Add(new());
+
+    private void RemoveVDocSlot(int index)
+    {
+        if (index >= 0 && index < _vDocSlots.Count && _vDocSlots.Count > 2)
+        {
+            _vDocSlots.RemoveAt(index);
+            _nDocResult = null;
+        }
+    }
+
+    private string GetVDocTab(string label) => _vDocTabs.TryGetValue(label, out var tab) ? tab : "fields";
+    private void SetVDocTab(string label, string tab) => _vDocTabs[label] = tab;
+
+    private async Task RunValidation()
+    {
+        var activeSlots = _vDocSlots.Where(s => s.File is not null && s.Bytes is not null).ToList();
+        if (activeSlots.Count < 2) return;
+
+        _nDocResult = null;
+        _isValidating = true;
+        _vCompletedCount = 0;
+        _vDocTabs = [];
+        StateHasChanged();
+
+        var results = new AnalysisViewModel[activeSlots.Count];
+        var semaphore = new SemaphoreSlim(3);
+
+        var tasks = activeSlots.Select(async (slot, idx) =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                results[idx] = await VAnalyzeDocAsync(slot.Bytes!, slot.File!.Name, slot.File.ContentType);
+                Interlocked.Increment(ref _vCompletedCount);
+                await InvokeAsync(StateHasChanged);
+            }
+            finally { semaphore.Release(); }
+        });
+
+        await Task.WhenAll(tasks);
+
+        _nDocResult = new NDocValidationViewModel { DocResults = results.ToList() };
+        BuildFieldMatrix();
+        _isValidating = false;
+    }
+
+    private async Task<AnalysisViewModel> VAnalyzeDocAsync(byte[] fileBytes, string fileName, string contentType)
+    {
+        try
+        {
+            using var s = new MemoryStream(fileBytes);
+            return await CuService.AnalyzeFileAsync(_vAnalyzerId, s, fileName, contentType);
+        }
+        catch (Exception ex)
+        {
+            return new AnalysisViewModel { AnalyzerId = _vAnalyzerId, FileName = fileName, Status = "Failed", ErrorMessage = ex.Message };
+        }
+    }
+
+    private void BuildFieldMatrix()
+    {
+        if (_nDocResult is null) return;
+        var docCount = _nDocResult.DocResults.Count;
+        var allFieldsByKey = new Dictionary<string, (string DisplayName, List<(int DocIndex, ExtractedField Field)> Entries)>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < docCount; i++)
+        {
+            var doc = _nDocResult.DocResults[i];
+            if (doc.Status != "Succeeded") continue;
+            var flat = VFlattenFields(doc.Fields);
+            foreach (var field in flat)
+            {
+                var key = FieldNameNormalizer.NormalizeKey(field.Name);
+                if (!allFieldsByKey.ContainsKey(key))
+                    allFieldsByKey[key] = (field.Name, []);
+                allFieldsByKey[key].Entries.Add((i, field));
+            }
+        }
+
+        _nDocResult.FieldMatrix = allFieldsByKey
+            .OrderBy(kvp => kvp.Value.DisplayName)
+            .Select(kvp =>
+            {
+                var values = new List<string?>(new string?[docCount]);
+                var confidences = new List<double?>(new double?[docCount]);
+                foreach (var (docIdx, field) in kvp.Value.Entries)
+                {
+                    values[docIdx] = field.Value;
+                    confidences[docIdx] = field.Confidence;
+                }
+                var nonNull = values.Where(v => v is not null).ToList();
+                var consensus = nonNull.GroupBy(v => v!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count()).FirstOrDefault()?.Key;
+                var isConsistent = nonNull.Count > 0 && nonNull.All(v => string.Equals(v?.Trim(), consensus?.Trim(), StringComparison.OrdinalIgnoreCase));
+                return new MatrixFieldRow { FieldName = kvp.Value.DisplayName, Values = values, Confidences = confidences, ConsensusValue = consensus, IsConsistent = isConsistent };
+            })
+            .OrderBy(r => r.IsConsistent ? 1 : 0)
+            .ThenBy(r => r.FieldName)
+            .ToList();
+    }
+
+    private static List<ExtractedField> VFlattenFields(List<ExtractedField> fields)
+    {
+        var result = new List<ExtractedField>();
+        foreach (var field in fields)
+        {
+            if (field.Value is not null && field.Value.TrimStart().StartsWith('['))
+                if (VTryFlattenJsonArray(field.Name, field.Value, result)) continue;
+            if (field.Value is not null && field.Value.TrimStart().StartsWith('{'))
+                if (VTryFlattenJsonObject(field.Name, field.Value, result)) continue;
+            result.Add(field);
+        }
+        return result;
+    }
+
+    private static bool VTryFlattenJsonArray(string prefix, string json, List<ExtractedField> result)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return false;
+            int index = 0;
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object)
+                    foreach (var prop in item.EnumerateObject())
+                        result.Add(new ExtractedField { Name = $"{prefix}[{index}].{prop.Name}", Value = prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : prop.Value.ToString() });
+                else
+                    result.Add(new ExtractedField { Name = $"{prefix}[{index}]", Value = item.ToString() });
+                index++;
+            }
+            return index > 0;
+        }
+        catch { return false; }
+    }
+
+    private static bool VTryFlattenJsonObject(string prefix, string json, List<ExtractedField> result)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            int count = 0;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                result.Add(new ExtractedField { Name = $"{prefix}.{prop.Name}", Value = prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString() : prop.Value.ToString() });
+                count++;
+            }
+            return count > 0;
+        }
+        catch { return false; }
+    }
+
+    private static string VFormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private static string VGetConfidenceClass(double? confidence) =>
+        confidence switch
+        {
+            >= 0.80 => "confidence-high",
+            >= 0.60 => "confidence-mid",
+            not null => "confidence-low",
+            _ => ""
+        };
+
+    private async Task CopyVDocJson(string? json)
+    {
+        if (json is null) return;
+        await JS.InvokeVoidAsync("harnessInterop.copyToClipboard", json);
+    }
 }

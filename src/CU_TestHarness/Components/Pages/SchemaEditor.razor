@@ -1,17 +1,29 @@
 @page "/schema-editor"
 @page "/analyzers"
+@page "/feedback"
+@page "/schema-builder"
 @using CU_TestHarness.Models
 @using CU_TestHarness.Services
 @using CU_TestHarness.Components.Shared
 @inject ContentUnderstandingService CuService
 @inject ModelProfileState ProfileState
+@inject IJSRuntime JS
 @rendermode InteractiveServer
 
-<PageTitle>Schema Editor — CU Test Harness</PageTitle>
+<PageTitle>Analyzers — CU Test Harness</PageTitle>
 
 <div class="container analyzers-container">
-    <h1>UC2 — Schema Tuning</h1>
-    <p class="subtitle">View, create, edit, and delete Content Understanding analyzers. Load a template or refine field names, types, and descriptions.</p>
+    <h1>Analyzers</h1>
+    <p class="subtitle">Manage, create, and test Content Understanding analyzers.</p>
+
+    @* ── Top-level tabs ── *@
+    <div class="matching-settings" style="margin-bottom:1rem;">
+        <button class="tab @(_pageTab == "manage" ? "active" : "")" @onclick='() => _pageTab = "manage"'>Manage</button>
+        <button class="tab @(_pageTab == "autodetect" ? "active" : "")" @onclick='() => _pageTab = "autodetect"'>Auto-Detect</button>
+    </div>
+
+    @if (_pageTab == "manage")
+    {
 
     <div class="analyzers-layout">
         <AnalyzerListPanel @ref="_listPanel" SelectedId="@_selectedId" OnAnalyzerSelected="SelectAnalyzer" />
@@ -117,10 +129,195 @@
             </div>
         </div>
     }
+
+    <!-- Quick Test (UC6 — Corrective Feedback) -->
+    @if (_selectedId is not null && !_selectedId.StartsWith("prebuilt-"))
+    {
+        <div class="upload-section" style="margin-top:1.5rem;">
+            <h2 style="margin:0 0 0.5rem;font-size:1.1rem;">Quick Test</h2>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 0.75rem;">
+                Upload a test document to run through <strong>@_selectedId</strong>. After editing field descriptions above, re-analyze to verify improvement.
+            </p>
+
+            <div class="upload-area @(_isTestDragOver ? "drag-over" : "")"
+                 @ondragenter="@(() => _isTestDragOver = true)"
+                 @ondragleave="@(() => _isTestDragOver = false)"
+                 @ondragover:preventDefault>
+                <InputFile OnChange="OnTestFileSelected" accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+                <div class="upload-prompt">
+                    @if (_testFile is not null)
+                    {
+                        <span class="file-name">@_testFile.Name</span>
+                    }
+                    else
+                    {
+                        <span>Drag &amp; drop a file here, or <strong>click to browse</strong></span>
+                    }
+                </div>
+            </div>
+
+            <button class="btn-analyze" style="margin-top:0.75rem;" @onclick="RunReAnalysis" disabled="@(_testFile is null || _isTestAnalyzing)">
+                @if (_isTestAnalyzing) { <span class="spinner"></span> <span>Analyzing…</span> } else { <span>Re-Analyze</span> }
+            </button>
+
+            @if (_testResult is not null)
+            {
+                <div style="margin-top:1rem;">
+                    <div class="result-header">
+                        <h2>Results</h2>
+                        <span class="status @(_testResult.Status.ToLower())">@_testResult.Status</span>
+                        @if (_testResult.Duration is not null)
+                        {
+                            <span class="duration">@_testResult.Duration</span>
+                        }
+                    </div>
+
+                    @if (_testResult.Status == "Succeeded" && _testResult.Fields.Count > 0)
+                    {
+                        <table class="fields-table">
+                            <thead><tr><th>Field</th><th>Value</th><th>Confidence</th></tr></thead>
+                            <tbody>
+                                @foreach (var f in _testResult.Fields)
+                                {
+                                    <tr>
+                                        <td class="field-name">@f.Name</td>
+                                        <td>@(f.Value ?? "—")</td>
+                                        <td class="field-confidence">@(f.Confidence?.ToString("P0") ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else if (!string.IsNullOrEmpty(_testResult.ErrorMessage))
+                    {
+                        <div class="error-box"><pre>@_testResult.ErrorMessage</pre></div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    } @* end manage tab *@
+
+    @* ═══════════════════════════════════════════════════════════════════
+       AUTO-DETECT TAB (UC1 — Schema Generation from Samples)
+       ═══════════════════════════════════════════════════════════════════ *@
+    @if (_pageTab == "autodetect")
+    {
+    <p style="font-size:0.88rem;color:var(--text-muted);margin:0 0 1rem;">
+        Upload 3–5 sample documents. They'll be analyzed with <code>prebuilt-documentFields</code> to detect common fields.
+        Review and edit the detected fields, then generate and create a custom analyzer.
+    </p>
+
+    <div class="upload-section">
+        <div class="upload-area @(_adIsDragOver ? "drag-over" : "")"
+             @ondragenter="@(() => _adIsDragOver = true)"
+             @ondragleave="@(() => _adIsDragOver = false)"
+             @ondragover:preventDefault>
+            <InputFile OnChange="OnAdFilesSelected" multiple
+                       accept=".pdf,.jpg,.jpeg,.png,.tiff,.tif,.bmp,.docx,.xlsx,.pptx" />
+            <div class="upload-prompt">
+                @if (_adFiles.Count > 0)
+                {
+                    <span class="file-name">@_adFiles.Count file(s) — @AdFormatSize(_adFiles.Sum(f => f.File.Size))</span>
+                }
+                else
+                {
+                    <span>Drag &amp; drop files here, or <strong>click to browse</strong></span>
+                    <span class="hint">Upload 3–5 sample documents (PDF, images, Office docs)</span>
+                }
+            </div>
+        </div>
+
+        <button class="btn-analyze" @onclick="RunSchemaDetection"
+                disabled="@(_adFiles.Count == 0 || _adDetecting)">
+            @if (_adDetecting)
+            {
+                <span class="spinner"></span> <span>Analyzing @_adDoneCount / @_adFiles.Count…</span>
+            }
+            else
+            {
+                <span>Detect Fields</span>
+            }
+        </button>
+    </div>
+
+    @if (_adDetectedFields.Count > 0)
+    {
+        <div class="upload-section" style="margin-top:1.5rem;">
+            <h2 style="margin:0 0 0.5rem;font-size:1.1rem;">Detected Fields (@_adDetectedFields.Count)</h2>
+            <p style="font-size:0.82rem;color:var(--text-muted);">
+                Edit names, choose the CU method for each, remove unwanted fields, then generate the analyzer JSON.
+            </p>
+            <table class="detected-fields-table">
+                <thead>
+                    <tr>
+                        <th>Include</th>
+                        <th>Field Name</th>
+                        <th>Method</th>
+                        <th>Frequency</th>
+                        <th>Sample Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _adDetectedFields)
+                    {
+                        <tr>
+                            <td><input type="checkbox" @bind="f.Include" /></td>
+                            <td><input type="text" @bind="f.Name" class="field-name-input" /></td>
+                            <td>
+                                <select @bind="f.Method">
+                                    <option value="extract">extract</option>
+                                    <option value="classify">classify</option>
+                                    <option value="generate">generate</option>
+                                </select>
+                            </td>
+                            <td><span class="freq-badge">@f.Frequency / @_adFiles.Count</span></td>
+                            <td class="sample-val">@(f.SampleValue?.Length > 80 ? f.SampleValue[..80] + "…" : f.SampleValue ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div style="margin-top:1rem;display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+                <label>Analyzer ID:</label>
+                <input type="text" @bind="_adAnalyzerId" pattern="[a-zA-Z][a-zA-Z0-9_]*" title="Letters, digits, and underscores only — no hyphens" style="width:300px;padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);" placeholder="my_custom_analyzer" />
+                <label>Model Profile:</label>
+                <select @bind="_adSelectedProfileId" style="padding:0.4rem 0.6rem;border-radius:6px;border:1px solid var(--border);">
+                    @foreach (var p in ModelProfile.AvailableProfiles)
+                    {
+                        <option value="@p.Id">@p.DisplayName @(p.DataResidencyGuaranteed ? "\U0001f341" : "\U0001f310")</option>
+                    }
+                </select>
+                <button class="btn-analyze" @onclick="AdGenerateAndCreate" disabled="@_adIsCreating">
+                    @if (_adIsCreating) { <span class="spinner"></span> } Generate &amp; Create Analyzer
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_adGeneratedJson))
+            {
+                <details style="margin-top:1rem;">
+                    <summary style="cursor:pointer;font-size:0.85rem;font-weight:600;">View Generated JSON</summary>
+                    <pre class="json-output" style="margin-top:0.5rem;max-height:400px;">@_adGeneratedJson</pre>
+                </details>
+            }
+        </div>
+    }
+
+    @if (_adError is not null)
+    {
+        <div class="error-box" style="margin-top:0.75rem;"><pre>@_adError</pre></div>
+    }
+
+    @if (_adSuccessMessage is not null)
+    {
+        <div class="success-box" style="margin-top:0.75rem;"><pre>@_adSuccessMessage</pre></div>
+    }
+    } @* end autodetect tab *@
 </div>
 
 @code {
     private AnalyzerListPanel _listPanel = default!;
+    private string _pageTab = "manage"; // "manage" or "autodetect"
 
     // Detail panel
     private string? _selectedId;
@@ -144,6 +341,26 @@
     private string? _createMessage;
     private bool _createIsError;
 
+    // Quick Test (UC6)
+    private bool _isTestDragOver;
+    private IBrowserFile? _testFile;
+    private byte[]? _testFileBytes;
+    private bool _isTestAnalyzing;
+    private AnalysisViewModel? _testResult;
+
+    // Auto-Detect (UC1)
+    private List<(IBrowserFile File, byte[] Bytes)> _adFiles = [];
+    private List<DetectedField> _adDetectedFields = [];
+    private bool _adDetecting;
+    private bool _adIsDragOver;
+    private int _adDoneCount;
+    private string _adAnalyzerId = "my_custom_analyzer";
+    private string _adSelectedProfileId = "";
+    private string? _adGeneratedJson;
+    private string? _adError;
+    private string? _adSuccessMessage;
+    private bool _adIsCreating;
+
     private async Task SelectAnalyzer(string id)
     {
         _selectedId = id;
@@ -151,6 +368,7 @@
         _detailMessage = null;
         _isLoadingDef = true;
         _createProfileId = ProfileState.ActiveProfile.Id;
+        _testResult = null;
         StateHasChanged();
 
         _selectedDefinition = await CuService.GetAnalyzerDefinitionAsync(id);
@@ -181,7 +399,7 @@
 
         if (success)
         {
-            _detailMessage = "Analyzer updated successfully.";
+            _detailMessage = "Analyzer updated — try re-analyzing your test document below to verify.";
             _detailIsError = false;
             _isEditing = false;
             _selectedDefinition = await CuService.GetAnalyzerDefinitionAsync(_selectedId!);
@@ -268,5 +486,169 @@
             _createMessage = error;
             _createIsError = true;
         }
+    }
+
+    // ── Quick Test (UC6 — Corrective Feedback) ──
+
+    private async Task OnTestFileSelected(InputFileChangeEventArgs e)
+    {
+        _testFile = e.File;
+        _isTestDragOver = false;
+        _testResult = null;
+        await using var stream = _testFile.OpenReadStream(50 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _testFileBytes = ms.ToArray();
+    }
+
+    private async Task RunReAnalysis()
+    {
+        if (_testFile is null || _testFileBytes is null || _selectedId is null) return;
+        _isTestAnalyzing = true;
+        _testResult = null;
+        StateHasChanged();
+
+        using var stream = new MemoryStream(_testFileBytes);
+        _testResult = await CuService.AnalyzeFileAsync(_selectedId, stream, _testFile.Name, _testFile.ContentType);
+        _isTestAnalyzing = false;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // AUTO-DETECT METHODS (UC1 — Schema Generation from Samples)
+    // ═══════════════════════════════════════════════════════════════════
+
+    private async Task OnAdFilesSelected(InputFileChangeEventArgs e)
+    {
+        _adFiles.Clear();
+        _adDetectedFields.Clear();
+        _adGeneratedJson = null;
+        _adError = null;
+        _adSuccessMessage = null;
+        _adIsDragOver = false;
+        _adSelectedProfileId = ProfileState.ActiveProfile.Id;
+
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            await using var stream = file.OpenReadStream(50 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _adFiles.Add((file, ms.ToArray()));
+        }
+    }
+
+    private async Task RunSchemaDetection()
+    {
+        if (_adFiles.Count == 0) return;
+        _adDetecting = true;
+        _adDoneCount = 0;
+        _adError = null;
+        _adSuccessMessage = null;
+        _adDetectedFields.Clear();
+        _adGeneratedJson = null;
+        StateHasChanged();
+
+        var fieldStats = new Dictionary<string, (int Count, string? Sample)>(StringComparer.OrdinalIgnoreCase);
+        var semaphore = new SemaphoreSlim(3);
+        var tasks = _adFiles.Select(async item =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                using var s = new MemoryStream(item.Bytes);
+                return await CuService.AnalyzeFileAsync("prebuilt-documentFields", s, item.File.Name, item.File.ContentType);
+            }
+            catch (Exception ex)
+            {
+                return new AnalysisViewModel { Status = "Failed", ErrorMessage = ex.Message, FileName = item.File.Name };
+            }
+            finally
+            {
+                semaphore.Release();
+                Interlocked.Increment(ref _adDoneCount);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var result in results.Where(r => r.Status == "Succeeded"))
+        {
+            foreach (var field in result.Fields)
+            {
+                var key = field.Name;
+                if (fieldStats.TryGetValue(key, out var existing))
+                    fieldStats[key] = (existing.Count + 1, existing.Sample);
+                else
+                    fieldStats[key] = (1, field.Value);
+            }
+        }
+
+        var failCount = results.Count(r => r.Status != "Succeeded");
+        if (failCount > 0 && failCount < _adFiles.Count)
+            _adError = $"{failCount} of {_adFiles.Count} files failed to analyze.";
+        else if (failCount == _adFiles.Count)
+        {
+            _adError = "All files failed. " + (results.FirstOrDefault()?.ErrorMessage ?? "");
+            _adDetecting = false;
+            return;
+        }
+
+        _adDetectedFields = fieldStats
+            .OrderByDescending(kv => kv.Value.Count)
+            .ThenBy(kv => kv.Key)
+            .Select(kv => new DetectedField
+            {
+                Name = kv.Key,
+                Frequency = kv.Value.Count,
+                SampleValue = kv.Value.Sample,
+                Method = "extract"
+            })
+            .ToList();
+
+        _adDetecting = false;
+    }
+
+    private async Task AdGenerateAndCreate()
+    {
+        var included = _adDetectedFields
+            .Where(f => f.Include && !string.IsNullOrWhiteSpace(f.Name))
+            .Select(f => (f.Name, f.Method))
+            .ToList();
+
+        if (included.Count == 0) return;
+
+        if (_adAnalyzerId.Contains('-'))
+        {
+            _adError = "Analyzer ID cannot contain hyphens ('-'). Use underscores ('_') instead.";
+            return;
+        }
+
+        var profile = ModelProfile.AvailableProfiles.FirstOrDefault(p => p.Id == _adSelectedProfileId)
+                      ?? ProfileState.ActiveProfile;
+        _adGeneratedJson = AnalyzerTemplates.GenerateSchemaFromFields(_adAnalyzerId, included, profile.CompletionModelName, profile.EmbeddingModelName);
+        _adIsCreating = true;
+        _adError = null;
+        _adSuccessMessage = null;
+        StateHasChanged();
+
+        var (success, error) = await CuService.CreateOrUpdateAnalyzerAsync(_adGeneratedJson, allowReplace: false);
+        _adIsCreating = false;
+
+        if (success)
+        {
+            _adSuccessMessage = $"Analyzer '{_adAnalyzerId}' created! Switch to the Manage tab to view and edit it.";
+            await _listPanel.RefreshList();
+        }
+        else
+        {
+            _adError = error;
+        }
+    }
+
+    private static string AdFormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
     }
 }

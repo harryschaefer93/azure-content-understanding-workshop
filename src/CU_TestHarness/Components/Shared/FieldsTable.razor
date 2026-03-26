@@ -1,0 +1,55 @@
+@* Reusable extracted fields table with optional highlighting and type column *@
+@using CU_TestHarness.Models
+
+@if (Fields.Count > 0)
+{
+    <table class="fields-table">
+        <thead>
+            <tr>
+                <th>Field</th>
+                <th>Value</th>
+                @if (ShowType) { <th>Type</th> }
+                <th>Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var field in Fields)
+            {
+                var fname = field.Name;
+                <tr class="@(HighlightedFieldName == fname ? "field-highlighted" : "")"
+                    data-field="@fname"
+                    @onclick="() => OnFieldClicked.InvokeAsync(fname)"
+                    style="@(OnFieldClicked.HasDelegate ? "cursor:pointer;" : "")">
+                    <td class="field-name">@field.Name</td>
+                    <td>@(field.Value ?? "—")</td>
+                    @if (ShowType) { <td class="field-type">@(field.Type ?? "—")</td> }
+                    <td class="field-confidence">
+                        @if (field.Confidence.HasValue)
+                        {
+                            <span class="@GetConfidenceClass(field.Confidence.Value)">@($"{field.Confidence.Value:P0}")</span>
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <p class="no-data">@EmptyMessage</p>
+}
+
+@code {
+    [Parameter] public List<ExtractedField> Fields { get; set; } = [];
+    [Parameter] public string? HighlightedFieldName { get; set; }
+    [Parameter] public bool ShowType { get; set; }
+    [Parameter] public string EmptyMessage { get; set; } = "No extracted fields.";
+    [Parameter] public EventCallback<string> OnFieldClicked { get; set; }
+
+    private static string GetConfidenceClass(double confidence) =>
+        confidence >= 0.80 ? "confidence-high" : confidence >= 0.60 ? "confidence-mid" : "confidence-low";
+}
