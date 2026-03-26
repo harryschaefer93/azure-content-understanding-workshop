@@ -56,7 +56,7 @@
             @if (_showViewer)
             {
                 <div class="split-layout-viewer">
-                    <CU_TestHarness.Components.Shared.DocumentViewer
+                    <CU_TestHarness.Components.Shared.DocumentViewer @ref="_docViewer"
                         FileBytes="_cachedFileBytes"
                         ContentType="@(_selectedFile?.ContentType ?? "")"
                         Fields="_result.Fields"
@@ -146,6 +146,7 @@
     private AnalysisViewModel? _result;
     private byte[]? _cachedFileBytes;
     private string? _highlightedField;
+    private CU_TestHarness.Components.Shared.DocumentViewer? _docViewer;
 
     // NL Query (UC4)
     private string _nlQuestion = "";
@@ -160,6 +161,17 @@
     private async Task HandleFieldClicked(string fieldName)
     {
         _highlightedField = _highlightedField == fieldName ? null : fieldName;
+
+        // Auto-navigate to the page containing this field's bounding region
+        if (_highlightedField is not null && _docViewer is not null && _result is not null)
+        {
+            var field = _result.Fields.FirstOrDefault(f => f.Name == fieldName);
+            var firstRegion = field?.BoundingRegions?.FirstOrDefault();
+            if (firstRegion is not null)
+            {
+                await _docViewer.NavigateToPageAsync(firstRegion.PageNumber);
+            }
+        }
     }
 
     private async Task OnViewerFieldClicked(string fieldName)

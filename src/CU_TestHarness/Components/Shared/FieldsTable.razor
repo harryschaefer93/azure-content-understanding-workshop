@@ -16,11 +16,15 @@
             @foreach (var field in Fields)
             {
                 var fname = field.Name;
+                var hasLocation = field.BoundingRegions is { Count: > 0 };
                 <tr class="@(HighlightedFieldName == fname ? "field-highlighted" : "")"
                     data-field="@fname"
                     @onclick="() => OnFieldClicked.InvokeAsync(fname)"
                     style="@(OnFieldClicked.HasDelegate ? "cursor:pointer;" : "")">
-                    <td class="field-name">@field.Name</td>
+                    <td class="field-name">
+                        @if (hasLocation) { <span class="field-location-badge" title="Location available — click to highlight on document">📍</span> }
+                        @field.Name
+                    </td>
                     <td>@(field.Value ?? "—")</td>
                     @if (ShowType) { <td class="field-type">@(field.Type ?? "—")</td> }
                     <td class="field-confidence">
