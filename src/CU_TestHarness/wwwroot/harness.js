@@ -134,7 +134,7 @@ window.harnessInterop = {
             div.title = box.fieldName + ': ' + (box.value || '');
 
             // Field name label (visible on hover or when highlighted)
-            var label = document.createElement('span');
+            const label = document.createElement('span');
             label.className = 'bbox-label';
             label.textContent = box.fieldName;
             div.appendChild(label);
