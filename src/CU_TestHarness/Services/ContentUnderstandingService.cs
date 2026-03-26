@@ -84,13 +84,18 @@ public class ContentUnderstandingService
                     {
                         foreach (var kvp in content.Fields)
                         {
-                            result.Fields.Add(new ExtractedField
+                            var extractedField = new ExtractedField
                             {
                                 Name = kvp.Key,
                                 Value = kvp.Value?.Value?.ToString(),
                                 Type = kvp.Value?.GetType().Name.Replace("Content", "").Replace("Field", ""),
                                 Confidence = kvp.Value?.Confidence
-                            });
+                            };
+
+                            // Extract bounding regions from SDK Sources property
+                            ExtractBoundingRegionsFromSdk(kvp.Value, extractedField);
+
+                            result.Fields.Add(extractedField);
                         }
                     }
                 }
@@ -247,7 +252,7 @@ public class ContentUnderstandingService
 
     // --- Field extraction from raw JSON ---
 
-    private static void ParseFieldsFromRawJson(AnalysisViewModel result)
+    internal static void ParseFieldsFromRawJson(AnalysisViewModel result)
     {
         if (string.IsNullOrEmpty(result.RawJson)) return;
 
@@ -419,6 +424,37 @@ public class ContentUnderstandingService
             }
             if (br.Polygon.Count >= 4)
                 field.BoundingRegions.Add(br);
+        }
+        if (field.BoundingRegions.Count == 0)
+            field.BoundingRegions = null;
+    }
+
+    /// <summary>
+    /// Extracts bounding regions from the SDK's ContentField.Sources property.
+    /// DocumentSource instances provide page number and polygon coordinates (as PointF).
+    /// Converts to flat [x1,y1,x2,y2,...] format matching the raw JSON extraction path.
+    /// </summary>
+    private static void ExtractBoundingRegionsFromSdk(ContentField? contentField, ExtractedField field)
+    {
+        if (contentField?.Sources is not { Length: > 0 }) return;
+
+        field.BoundingRegions = [];
+        foreach (var source in contentField.Sources)
+        {
+            if (source is DocumentSource docSource && docSource.Polygon is { Count: >= 4 })
+            {
+                var polygon = new List<double>(docSource.Polygon.Count * 2);
+                foreach (var point in docSource.Polygon)
+                {
+                    polygon.Add(point.X);
+                    polygon.Add(point.Y);
+                }
+                field.BoundingRegions.Add(new BoundingRegion
+                {
+                    PageNumber = docSource.PageNumber,
+                    Polygon = polygon
+                });
+            }
         }
         if (field.BoundingRegions.Count == 0)
             field.BoundingRegions = null;

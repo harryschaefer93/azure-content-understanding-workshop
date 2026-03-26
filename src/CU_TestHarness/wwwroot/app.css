@@ -492,7 +492,13 @@ h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
 .viewer-canvas-container img { max-width: 100%; display: block; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
 .bbox-overlay-container { position: absolute; top: 0; left: 0; pointer-events: none; }
 .bbox-overlay { position: absolute; border: 2px solid rgba(59, 130, 246, 0.6); background: rgba(59, 130, 246, 0.08); transition: all 0.15s; pointer-events: auto; cursor: pointer; }
+.bbox-overlay:hover { border-color: rgba(59, 130, 246, 0.9); background: rgba(59, 130, 246, 0.18); }
 .bbox-overlay.bbox-highlighted { border-color: rgba(249, 115, 22, 0.9); background: rgba(249, 115, 22, 0.15); z-index: 1; }
+.bbox-label { position: absolute; top: -18px; left: 0; font-size: 0.65rem; line-height: 1; padding: 1px 4px; border-radius: 2px; white-space: nowrap; opacity: 0; transition: opacity 0.15s; pointer-events: none; background: rgba(59, 130, 246, 0.85); color: #fff; }
+.bbox-overlay:hover .bbox-label, .bbox-highlighted .bbox-label { opacity: 1; }
+.bbox-highlighted .bbox-label { background: rgba(249, 115, 22, 0.9); }
+.bbox-count-badge { font-size: 0.75rem; color: var(--text-muted); }
+.field-location-badge { font-size: 0.72rem; margin-right: 0.2rem; opacity: 0.7; }
 .split-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
 .split-layout-viewer { position: sticky; top: 0; max-height: 100vh; overflow: hidden; }
 .split-layout-results { max-height: calc(100vh - 2rem); overflow-y: auto; }

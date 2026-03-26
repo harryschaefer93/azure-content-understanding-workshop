@@ -124,13 +124,20 @@ window.harnessInterop = {
             const maxX = Math.max.apply(null, xs);
             const maxY = Math.max.apply(null, ys);
 
+            const isHighlighted = box.fieldName === highlightedField;
             const div = document.createElement('div');
-            div.className = 'bbox-overlay' + (box.fieldName === highlightedField ? ' bbox-highlighted' : '');
+            div.className = 'bbox-overlay' + (isHighlighted ? ' bbox-highlighted' : '');
             div.style.left = minX + 'px';
             div.style.top = minY + 'px';
             div.style.width = (maxX - minX) + 'px';
             div.style.height = (maxY - minY) + 'px';
             div.title = box.fieldName + ': ' + (box.value || '');
+
+            // Field name label (visible on hover or when highlighted)
+            var label = document.createElement('span');
+            label.className = 'bbox-label';
+            label.textContent = box.fieldName;
+            div.appendChild(label);
 
             // Click handler for bidirectional highlighting
             div.addEventListener('click', function () {

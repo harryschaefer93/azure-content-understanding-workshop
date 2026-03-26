@@ -10,6 +10,10 @@
             <span>Page @_currentPage / @_totalPages</span>
             <button disabled="@(_currentPage >= _totalPages)" @onclick="NextPage">Next &#9654;</button>
         }
+        @if (_bboxCount > 0)
+        {
+            <span class="bbox-count-badge" title="Bounding boxes on this page">📍 @_bboxCount</span>
+        }
         <span style="margin-left:auto;font-size:0.78rem;color:var(--text-muted);">
             @if (_isPdf) { <span>PDF</span> } else { <span>Image</span> }
         </span>
@@ -47,6 +51,8 @@
     private double _scale = 1.5;
     private bool _isPdf;
     private bool _rendered;
+    private int _bboxCount;
+    private string? _prevHighlightedField;
     private DotNetObjectReference<DocumentViewer>? _selfRef;
 
     protected override void OnParametersSet()
@@ -65,6 +71,12 @@
             _selfRef ??= DotNetObjectReference.Create(this);
             await RenderDocument();
         }
+        else if (_prevHighlightedField != HighlightedFieldName)
+        {
+            // Only redraw overlays when highlight changes (skip full PDF re-render)
+            _prevHighlightedField = HighlightedFieldName;
+            await DrawOverlays();
+        }
     }
 
     /// <summary>Call this from parent to force re-render when file changes.</summary>
@@ -75,6 +87,16 @@
         if (_isPdf)
             await JS.InvokeVoidAsync("harnessInterop.resetPdfCache");
         await RenderDocument();
+    }
+
+    /// <summary>Navigate to a specific page and redraw. Returns true if page changed.</summary>
+    public async Task<bool> NavigateToPageAsync(int pageNumber)
+    {
+        if (pageNumber < 1 || pageNumber > _totalPages || pageNumber == _currentPage)
+            return false;
+        _currentPage = pageNumber;
+        await RenderDocument();
+        return true;
     }
 
     /// <summary>Get the rotation angle for the current page, snapped to nearest 90°.</summary>
@@ -126,8 +148,11 @@
 
     private async Task DrawOverlays()
     {
+        _prevHighlightedField = HighlightedFieldName;
+
         if (Fields is null || Fields.Count == 0)
         {
+            _bboxCount = 0;
             await JS.InvokeVoidAsync("harnessInterop.clearOverlays", _overlayId);
             return;
         }
@@ -145,6 +170,8 @@
                     polygon = br.Polygon
                 }))
             .ToList();
+
+        _bboxCount = boxes.Count;
 
         _selfRef ??= DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("harnessInterop.drawBoundingBoxes",
