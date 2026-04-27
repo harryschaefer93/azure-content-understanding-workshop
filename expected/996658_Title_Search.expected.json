@@ -1,0 +1,207 @@
+{
+  "doc": "996658_Title_Search",
+  "seededFrom": "repro_title_search_v1",
+  "seededAt": "2026-04-27T20:04:23.9925103Z",
+  "fields": {
+    "Pin": {
+      "value": "634 969 234",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].First_Name": {
+      "value": "DANIEL",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].Last_Name": {
+      "value": "THOMPSON",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].Owner_Address": {
+      "value": "78 MAPLE GROVE AVENUE MISSISSAUGA ONTARIO L5B 2C4",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].First_Name": {
+      "value": "SARAH",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].Last_Name": {
+      "value": "THOMPSON",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].Owner_Address": {
+      "value": "78 MAPLE GROVE AVENUE MISSISSAUGA ONTARIO L5B 2C4",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Date": {
+      "value": "18/04/1968",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Particulars": {
+      "value": "MORTGAGE MORTGAGEE - CENTRAL MORTGAGE AND HOUSING CORPORATION.",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Reg_Num": {
+      "value": "6547KJ",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[10].Date": {
+      "value": "23/11/2021",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[10].Particulars": {
+      "value": "MORTGAGE",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[10].Reg_Num": {
+      "value": "223 666 346",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Date": {
+      "value": "05/03/1970",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Particulars": {
+      "value": "CAVEAT RE : RESTRICTIVE COVENANT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Reg_Num": {
+      "value": "5346FF",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Date": {
+      "value": "12/04/1971",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Particulars": {
+      "value": "EASEMENT SEE EASEMENT FOR DOMINANT AND SERVIENT TENEMENTS",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Reg_Num": {
+      "value": "4565DU",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Date": {
+      "value": "22/09/1973",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Particulars": {
+      "value": "MORTGAGE MORTGAGEE - CONTOSO REALTY LTD. ORIGINAL PRINCIPAL AMOUNT: $6,300",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Reg_Num": {
+      "value": "3467AM",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Date": {
+      "value": "10/11/1979",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Particulars": {
+      "value": "ZONING REGULATIONS SUBJECT TO CAYMAN INTERNATIONAL AIRPORT ZONING REGULATIONS",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Reg_Num": {
+      "value": "663 885 446",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Date": {
+      "value": "05/07/2018",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Particulars": {
+      "value": "NOTICE OF SECURITY INTEREST RE : FIXTURES IN FAVOUR OF - 4565234 ONTARIO INC. 2 DEVCO CIRCLE, 9TH FLOOR TORONTO ONTARIO M5D2H9 DEBTOR - LEENA ATIA 1395 BEAN CRES WINNIPEG MANITOBA C2G1X9 AMOUNT: $37,765 EXPIRES: INFINITY (DATA UPDATED BY: TRANSFER OF NOTICE OF SECURITY INTEREST 46573456)",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Reg_Num": {
+      "value": "997 056 453",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Date": {
+      "value": "07/04/2019",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Particulars": {
+      "value": "UTILITY RIGHT OF WAY GRANTEE - THE CITY OF CALGARY. AS TO PORTION OR PLAN: 1933356",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Reg_Num": {
+      "value": "345 235 776",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[7].Date": {
+      "value": "06/07/2019",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[7].Particulars": {
+      "value": "EASEMENT AS TO PORTION OR PLAN: 2305667 OVER AND FOR THE BENEFIT OF: SEE INSTRUMENT AS TO R/W \u0022A\u0022",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[7].Reg_Num": {
+      "value": "235 546 532",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[8].Date": {
+      "value": "17/08/2020",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[8].Particulars": {
+      "value": "CAVEAT RE : RESTRICTIVE COVENANT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[8].Reg_Num": {
+      "value": "235 775 435",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[9].Date": {
+      "value": "21/10/2020",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[9].Particulars": {
+      "value": "CAVEAT RE : RESTRICTIVE COVENANT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[9].Reg_Num": {
+      "value": "201 192 220",
+      "confidence_target": null,
+      "notes": ""
+    }
+  }
+}

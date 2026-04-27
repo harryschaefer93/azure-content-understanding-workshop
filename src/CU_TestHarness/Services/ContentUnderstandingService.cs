@@ -30,9 +30,12 @@ public class ContentUnderstandingService
         _httpClient = httpClient;
         _costEstimator = costEstimator;
         _credential = new DefaultAzureCredential();
+        var clientOptions = new ContentUnderstandingClientOptions();
+        clientOptions.Diagnostics.IsLoggingContentEnabled = true;
         _client = new ContentUnderstandingClient(
             new Uri(_options.Endpoint),
-            _credential);
+            _credential,
+            clientOptions);
     }
 
     public async Task<AnalysisViewModel> AnalyzeFileAsync(
@@ -118,6 +121,28 @@ public class ContentUnderstandingService
             result.ErrorMessage = $"Authentication failed ({ex.Status}). Run 'az login' and ensure you have the 'Cognitive Services User' role on the CU resource.\n\n{ex.Message}";
             _logger.LogError(ex, "Auth failure calling Content Understanding API");
         }
+        catch (RequestFailedException ex)
+        {
+            sw.Stop();
+            result.Duration = sw.Elapsed;
+            result.Status = "Failed";
+            // Extract actual error details from the raw response
+            string details = ex.Message;
+            try
+            {
+                var rawResponse = ex.GetRawResponse();
+                if (rawResponse?.Content is not null)
+                {
+                    var body = rawResponse.Content.ToString();
+                    if (!string.IsNullOrWhiteSpace(body))
+                        details = $"Status: {ex.Status} | ErrorCode: {ex.ErrorCode}\n\n{FormatJson(body)}";
+                }
+            }
+            catch { /* fall back to ex.Message */ }
+            result.ErrorMessage = details;
+            _logger.LogError(ex, "RequestFailedException analyzing file {FileName}: ErrorCode={ErrorCode}, Status={Status}",
+                fileName, ex.ErrorCode, ex.Status);
+        }
         catch (Exception ex)
         {
             sw.Stop();
@@ -145,6 +170,50 @@ public class ContentUnderstandingService
             _logger.LogError(ex, "Error listing analyzers");
         }
         return ids;
+    }
+
+    // --- Defaults (REST API — SDK doesn't cover these) ---
+
+    /// <summary>
+    /// Fetches the current CU defaults (model deployment mappings for prebuilt analyzers).
+    /// Returns a dictionary like { "prebuilt-analyzer-completion": "connection/gpt-41", ... }.
+    /// </summary>
+    public async Task<Dictionary<string, string>?> GetDefaultsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var endpoint = _options.Endpoint.TrimEnd('/');
+            var url = $"{endpoint}/contentunderstanding/defaults?api-version=2025-11-01";
+            var token = await GetBearerTokenAsync(cancellationToken);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to fetch CU defaults: {Status}", response.StatusCode);
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(json);
+
+            if (!doc.RootElement.TryGetProperty("modelDeployments", out var deployments))
+                return null;
+
+            var result = new Dictionary<string, string>();
+            foreach (var prop in deployments.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.GetString() ?? "";
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching CU defaults");
+            return null;
+        }
     }
 
     // --- Analyzer CRUD (REST API — SDK doesn't cover these) ---
@@ -458,11 +527,22 @@ public class ContentUnderstandingService
             using var doc = JsonDocument.Parse(result.RawJson);
             var root = doc.RootElement;
 
-            // Page count from result.contents array length
+            // Page count: prefer the sum of contents[].pages (actual document pages) over
+            // contents.Length (which is one entry per input file, not per page).
             if (root.TryGetProperty("result", out var resultEl))
             {
-                if (resultEl.TryGetProperty("contents", out var contents))
-                    result.PageCount = contents.GetArrayLength();
+                if (resultEl.TryGetProperty("contents", out var contents) &&
+                    contents.ValueKind == JsonValueKind.Array)
+                {
+                    var pageSum = 0;
+                    foreach (var content in contents.EnumerateArray())
+                    {
+                        if (content.TryGetProperty("pages", out var pgs) &&
+                            pgs.ValueKind == JsonValueKind.Array)
+                            pageSum += pgs.GetArrayLength();
+                    }
+                    result.PageCount = pageSum > 0 ? pageSum : contents.GetArrayLength();
+                }
 
                 if (resultEl.TryGetProperty("usage", out var usage))
                 {
@@ -489,9 +569,19 @@ public class ContentUnderstandingService
                 }
             }
 
-            // Also check top-level contents
-            if (result.PageCount is null && root.TryGetProperty("contents", out var topContents))
-                result.PageCount = topContents.GetArrayLength();
+            // Also check top-level contents (sum nested pages, fall back to contents length)
+            if (result.PageCount is null && root.TryGetProperty("contents", out var topContents) &&
+                topContents.ValueKind == JsonValueKind.Array)
+            {
+                var pageSum = 0;
+                foreach (var content in topContents.EnumerateArray())
+                {
+                    if (content.TryGetProperty("pages", out var pgs) &&
+                        pgs.ValueKind == JsonValueKind.Array)
+                        pageSum += pgs.GetArrayLength();
+                }
+                result.PageCount = pageSum > 0 ? pageSum : topContents.GetArrayLength();
+            }
 
             // Check top-level analyzeResult.pages
             if (result.Pages is null && root.TryGetProperty("analyzeResult", out var topAr))

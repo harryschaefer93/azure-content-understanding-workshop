@@ -486,6 +486,11 @@ h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
 .viewer-toolbar { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 0.82rem; }
 .viewer-toolbar button { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
 .viewer-toolbar button:hover:not(:disabled) { background: var(--primary); color: #fff; }
+
+/* ===== Analyzer Model Info & Compatibility ===== */
+.analyzer-model-info { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; padding: 0.4rem 0.6rem; background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); }
+.analyzer-model-info code { font-size: 0.75rem; padding: 0.1rem 0.35rem; background: var(--bg); border-radius: 3px; }
+.analyzer-compat-warning { margin-top: 0.4rem; padding: 0.6rem 0.8rem; background: #fef3c7; border: 1px solid #f59e0b; border-radius: var(--radius); color: #92400e; font-size: 0.82rem; line-height: 1.4; }
 .viewer-toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
 .viewer-canvas-container { position: relative; overflow: auto; max-height: 70vh; background: #525659; display: flex; justify-content: center; padding: 0.5rem; }
 .viewer-canvas-container canvas { display: block; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }

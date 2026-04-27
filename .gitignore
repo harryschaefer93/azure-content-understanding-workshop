@@ -22,3 +22,15 @@ __pycache__/
 # Personal / local config
 **/appsettings.Personal.json
 .github/agents/
+
+# Project brief (local context, not committed)
+BRIEF.md
+
+
+# === Added by Phase 1 restructure ===
+.terraform-local/
+output/
+.env
+.env.*
+!.env.sample
+# === End Phase 1 additions ===

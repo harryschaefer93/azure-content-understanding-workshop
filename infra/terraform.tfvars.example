@@ -1,16 +1,16 @@
-# Example values for deploy.tf
+# FCT-Canada CU POC — example values for infra/deploy.tf
 # Copy to terraform.tfvars (or pass with -var-file=terraform.tfvars).
 
-# Resource group
-resource_group_name     = "contoso-cu-rg"
-resource_group_location = "canadacentral"
+# Azure subscription + tenant (replace with your own)
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
 
-# AI Services account names (globally unique)
-# Naming convention:
-#   {prefix}-cu-{region}      -> Content Understanding endpoint host
-#   {prefix}-models-{region}  -> GPT/embedding deployment host
-cu_account_name     = "contoso-cu-cc"
-models_account_name = "contoso-models-ce"
+# Naming prefix (drives all resource names)
+prefix = "fcttest"
+
+# Resource group
+resource_group_name     = "fcttest-cu-rg"
+resource_group_location = "canadacentral"
 
 # Regions
 cu_location     = "canadacentral"
@@ -20,20 +20,17 @@ models_location = "canadaeast"
 sku = "S0"
 
 # Throughput capacities (1K TPM units)
-gpt41_capacity               = 100
-gpt41_mini_capacity          = 100
-gpt41_mini_standard_capacity = 100
-gpt4o_standard_capacity      = 100
-embedding_ada_capacity       = 50
-embedding_3large_capacity    = 50
-embedding_3small_capacity    = 50
+gpt41_capacity            = 100
+gpt41_mini_capacity       = 100
+gpt4o_capacity            = 50
+embedding_ada_capacity    = 50
+embedding_3large_capacity = 50
+embedding_3small_capacity = 50
 
-# Required governance tags
-# Add/change keys to match client policy.
+# Governance tags
 tags = {
-  environment = "prod"
-  owner       = "ai-platform-team"
+  environment = "dev"
+  owner       = "hschaefer"
   project     = "content-understanding"
-  costCenter  = "12345"
-  dataClass   = "internal"
+  customer    = "fct-canada"
 }

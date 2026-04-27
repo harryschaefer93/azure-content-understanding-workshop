@@ -1,0 +1,147 @@
+{
+  "doc": "996659_Title_Search",
+  "seededFrom": "repro_title_search_v1",
+  "seededAt": "2026-04-27T20:04:24.0049650Z",
+  "fields": {
+    "Pin": {
+      "value": "7821 554 9087",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].First_Name": {
+      "value": "EMILY",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].Last_Name": {
+      "value": "CARTER",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[0].Owner_Address": {
+      "value": "221 BROOKSIDE LANE\nSOUTH HAMPTON\nONTARIO M4K 1N8",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].First_Name": {
+      "value": "JULIAN",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].Last_Name": {
+      "value": "PARK",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Registered_Owners[1].Owner_Address": {
+      "value": "221 BROOKSIDE LANE\nSOUTH HAMPTON\nONTARIO M4K 1N8",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Date": {
+      "value": "03/02/1985",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Particulars": {
+      "value": "MORTGAGE\n\nMORTGAGEE - NATIONAL HOUSING CORPORATION.",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[0].Reg_Num": {
+      "value": "4421PL",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Date": {
+      "value": "18/09/1992",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Particulars": {
+      "value": "EASEMENT AS TO PORTION OR PLAN: 92R11876 FOR UTILITY ACCESS",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[1].Reg_Num": {
+      "value": "5346FF .",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Date": {
+      "value": "27/05/2001",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Particulars": {
+      "value": "CAVEAT RE: RESTRICTIVE COVENANT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[2].Reg_Num": {
+      "value": "6643YU .",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Date": {
+      "value": "11/08/2015",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Particulars": {
+      "value": "DISCHARGE OF MORTGAGE RE: INSTRUMENT NO. 4421PL",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[3].Reg_Num": {
+      "value": "7754OP .",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Date": {
+      "value": "15/03/2023",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Particulars": {
+      "value": "UTILITY RIGHT OF WAY GRANTEE - CITY OF HAMPTON AS TO PORTION OR PLAN: 23R55671",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[4].Reg_Num": {
+      "value": "112 778 443",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Date": {
+      "value": "09/09/2023",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Particulars": {
+      "value": "EASEMENT AS TO PORTION OR PLAN: 23R66782 OVER AND FOR THE BENEFIT OF: SEE INSTRUMENT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[5].Reg_Num": {
+      "value": "221 664 998",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Date": {
+      "value": "11/01/2024",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Particulars": {
+      "value": "CAVEAT RE : RESTRICTIVE COVENANT",
+      "confidence_target": null,
+      "notes": ""
+    },
+    "Title_Search[6].Reg_Num": {
+      "value": "334 556 781",
+      "confidence_target": null,
+      "notes": ""
+    }
+  }
+}

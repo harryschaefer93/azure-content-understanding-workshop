@@ -1,0 +1,2 @@
+# Placeholder — keeps the expected/ directory in git.
+# Drop <docname>.expected.json files here (or generate them with `run-diff --seed-missing`).

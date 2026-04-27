@@ -6,15 +6,17 @@
 #   1. Resource Group (created by Terraform)
 #   2. Content Understanding AI Services account (Canada Central) — hosts the CU endpoint
 #   3. Models AI Services account (Canada East) — hosts GPT + embedding model deployments
-#   4. Role assignment: CU managed identity → Cognitive Services User on Models account
+#   4. Storage account (Canada Central) — blob storage for documents
+#   5. Role assignment: CU managed identity → Cognitive Services User on Models account
 #
-# Naming convention:  {prefix}-cu-{region}   for the CU service
-#                     {prefix}-models-{region} for the models host
+# Naming convention:  {prefix}-cusrv-models-{region} for the CU service
+#                     {prefix}-cu-models-{region}    for the models host
+#                     sa{prefix}cupoc                for the storage account
 #
 # Usage:
 #   terraform init
-#   terraform plan  -var="cu_account_name=contoso-cu-cc" -var="models_account_name=contoso-models-ce"
-#   terraform apply -var="cu_account_name=contoso-cu-cc" -var="models_account_name=contoso-models-ce"
+#   terraform plan  -var="prefix=fcttest"
+#   terraform apply -var="prefix=fcttest"
 #
 # ====================================================================
 
@@ -30,16 +32,29 @@ terraform {
 
 provider "azurerm" {
   features {}
+  tenant_id              = var.tenant_id
+  subscription_id        = var.subscription_id
+  storage_use_azuread    = true
 }
 
 # ====================================================================
 # Variables
 # ====================================================================
 
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy into."
+  type        = string
+}
+
+variable "tenant_id" {
+  description = "Entra ID tenant ID for the subscription."
+  type        = string
+}
+
 variable "resource_group_name" {
   description = "Name of the resource group to create."
   type        = string
-  default     = "CU-Workshop-RG"
+  default     = "fcttest-cu-rg"
 }
 
 variable "resource_group_location" {
@@ -48,13 +63,13 @@ variable "resource_group_location" {
   default     = "canadacentral"
 }
 
-variable "cu_account_name" {
-  description = "Globally unique name for the Content Understanding AI Services account (hosts the CU endpoint). Recommended pattern: {prefix}-cu-{region}. Example: contoso-cu-cc (2-64 chars)."
+variable "prefix" {
+  description = "Naming prefix for all resources. Convention: {prefix}-cusrv-models-{region} for CU, {prefix}-cu-models-{region} for models, sa{prefix}cupoc for storage. Example: fcttest."
   type        = string
 
   validation {
-    condition     = length(var.cu_account_name) >= 2 && length(var.cu_account_name) <= 64
-    error_message = "Account name must be 2-64 characters."
+    condition     = length(var.prefix) >= 2 && length(var.prefix) <= 20
+    error_message = "Prefix must be 2-20 characters."
   }
 }
 
@@ -64,14 +79,19 @@ variable "cu_location" {
   default     = "canadacentral"
 }
 
-variable "models_account_name" {
-  description = "Globally unique name for the Models AI Services account (hosts GPT + embedding deployments). Recommended pattern: {prefix}-models-{region}. Example: contoso-models-ce (2-64 chars)."
-  type        = string
+# ====================================================================
+# Locals — computed resource names following FCT naming convention
+# ====================================================================
 
-  validation {
-    condition     = length(var.models_account_name) >= 2 && length(var.models_account_name) <= 64
-    error_message = "Account name must be 2-64 characters."
+locals {
+  region_abbrev = {
+    "canadacentral" = "cc"
+    "canadaeast"    = "ce"
   }
+  cu_account_name        = "${var.prefix}26-cusrv-models-${local.region_abbrev[var.cu_location]}"
+  models_account_name    = "${var.prefix}26-cu-models-${local.region_abbrev[var.models_location]}"
+  storage_account_name   = "sa${replace(var.prefix, "-", "")}26cupoc"
+  models_connection_name = replace(local.models_account_name, "-", "")
 }
 
 variable "models_location" {
@@ -99,19 +119,13 @@ variable "gpt41_capacity" {
 }
 
 variable "gpt41_mini_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4.1-mini deployment."
+  description = "Capacity (1K TPM units) for gpt-4.1-mini Standard deployment."
   type        = number
   default     = 100
 }
 
-variable "gpt41_mini_standard_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4.1-mini Standard (Canada-guaranteed) deployment."
-  type        = number
-  default     = 100
-}
-
-variable "gpt4o_standard_capacity" {
-  description = "Capacity (1K TPM units) for gpt-4o Standard (Canada-guaranteed) deployment."
+variable "gpt4o_capacity" {
+  description = "Capacity (1K TPM units) for gpt-4o Standard deployment."
   type        = number
   default     = 100
 }
@@ -151,14 +165,17 @@ resource "azurerm_resource_group" "rg" {
 # ====================================================================
 
 resource "azurerm_cognitive_account" "cu" {
-  name                          = var.cu_account_name
+  name                          = local.cu_account_name
   location                      = var.cu_location
   resource_group_name           = azurerm_resource_group.rg.name
   kind                          = "AIServices"
   sku_name                      = var.sku
-  custom_subdomain_name         = var.cu_account_name
+  custom_subdomain_name         = local.cu_account_name
   public_network_access_enabled = true
   local_auth_enabled            = false
+
+  # Required for CU connection management API
+  project_management_enabled    = true
 
   identity {
     type = "SystemAssigned"
@@ -174,12 +191,12 @@ resource "azurerm_cognitive_account" "cu" {
 # ====================================================================
 
 resource "azurerm_cognitive_account" "models" {
-  name                          = var.models_account_name
+  name                          = local.models_account_name
   location                      = var.models_location
   resource_group_name           = azurerm_resource_group.rg.name
   kind                          = "AIServices"
   sku_name                      = var.sku
-  custom_subdomain_name         = var.models_account_name
+  custom_subdomain_name         = local.models_account_name
   public_network_access_enabled = true
   local_auth_enabled            = false
 
@@ -210,24 +227,7 @@ resource "azurerm_cognitive_deployment" "gpt41" {
 }
 
 resource "azurerm_cognitive_deployment" "gpt41_mini" {
-  name                 = "gpt-41-mini"
-  cognitive_account_id = azurerm_cognitive_account.models.id
-
-  model {
-    format = "OpenAI"
-    name   = "gpt-4.1-mini"
-  }
-
-  sku {
-    name     = "GlobalStandard"
-    capacity = var.gpt41_mini_capacity
-  }
-
-  depends_on = [azurerm_cognitive_deployment.gpt41]
-}
-
-resource "azurerm_cognitive_deployment" "gpt41_mini_standard" {
-  name                 = "gpt-41-mini-ca"
+  name                 = "gpt-4.1-mini"
   cognitive_account_id = azurerm_cognitive_account.models.id
 
   model {
@@ -237,14 +237,14 @@ resource "azurerm_cognitive_deployment" "gpt41_mini_standard" {
 
   sku {
     name     = "Standard"
-    capacity = var.gpt41_mini_standard_capacity
+    capacity = var.gpt41_mini_capacity
   }
 
-  depends_on = [azurerm_cognitive_deployment.gpt41_mini]
+  depends_on = [azurerm_cognitive_deployment.gpt41]
 }
 
-resource "azurerm_cognitive_deployment" "gpt4o_standard" {
-  name                 = "gpt-4o-ca"
+resource "azurerm_cognitive_deployment" "gpt4o" {
+  name                 = "gpt-4o"
   cognitive_account_id = azurerm_cognitive_account.models.id
 
   model {
@@ -255,10 +255,10 @@ resource "azurerm_cognitive_deployment" "gpt4o_standard" {
 
   sku {
     name     = "Standard"
-    capacity = var.gpt4o_standard_capacity
+    capacity = var.gpt4o_capacity
   }
 
-  depends_on = [azurerm_cognitive_deployment.gpt41_mini_standard]
+  depends_on = [azurerm_cognitive_deployment.gpt41_mini]
 }
 
 resource "azurerm_cognitive_deployment" "embedding_ada" {
@@ -275,7 +275,7 @@ resource "azurerm_cognitive_deployment" "embedding_ada" {
     capacity = var.embedding_ada_capacity
   }
 
-  depends_on = [azurerm_cognitive_deployment.gpt4o_standard]
+  depends_on = [azurerm_cognitive_deployment.gpt4o]
 }
 
 resource "azurerm_cognitive_deployment" "embedding_3large" {
@@ -326,6 +326,41 @@ resource "azurerm_role_assignment" "cu_to_models" {
   skip_service_principal_aad_check = true
 }
 
+# Also needed for model-dependent analyzers (prebuilt-documentSearch, etc.)
+resource "azurerm_role_assignment" "cu_to_models_openai" {
+  scope                = azurerm_cognitive_account.models.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = azurerm_cognitive_account.cu.identity[0].principal_id
+  principal_type       = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+
+# ====================================================================
+# Storage Account
+# ====================================================================
+
+resource "azurerm_storage_account" "storage" {
+  name                            = local.storage_account_name
+  resource_group_name             = azurerm_resource_group.rg.name
+  location                        = var.cu_location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  shared_access_key_enabled       = false
+  default_to_oauth_authentication = true
+
+  tags = var.tags
+}
+
+# Grant CU managed identity Storage Blob Data Contributor on the storage account
+# (FDPO: no shared keys — CU must use Entra ID to read/write blobs).
+resource "azurerm_role_assignment" "cu_to_storage_blob" {
+  scope                            = azurerm_storage_account.storage.id
+  role_definition_name             = "Storage Blob Data Contributor"
+  principal_id                     = azurerm_cognitive_account.cu.identity[0].principal_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
+
 # ====================================================================
 # Outputs
 # ====================================================================
@@ -352,5 +387,15 @@ output "models_resource_id" {
 
 output "models_connection_name" {
   description = "AOAI connection name for defaults-body.json (account name without hyphens)."
-  value       = replace(var.models_account_name, "-", "")
+  value       = local.models_connection_name
+}
+
+output "storage_account_name" {
+  description = "Name of the storage account."
+  value       = azurerm_storage_account.storage.name
+}
+
+output "storage_account_id" {
+  description = "Resource ID of the storage account."
+  value       = azurerm_storage_account.storage.id
 }

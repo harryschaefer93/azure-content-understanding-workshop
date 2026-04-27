@@ -1,15 +1,15 @@
 # Copilot Instructions — Content Understanding Workshop Repo
 
-## Manifest Rule
+## Brief Rule
 
-**After completing any task** that adds, removes, renames, or modifies files or changes project status, **update [`MANIFEST.md`](../MANIFEST.md)**:
+**After completing any task** that adds, removes, renames, or modifies files or changes project status, **update [`BRIEF.md`](../BRIEF.md)**:
 
 1. Update the **"Last updated"** date at the top.
 2. Add/remove/update rows in the relevant section.
 3. If a **Next Steps** item is completed, mark it done or remove it. Add new next steps if the work creates follow-ups.
 4. Log any new decisions or issues in **Known Issues / Decisions**.
 
-Do not skip this step — the manifest is the single source of truth for project status.
+Do not skip this step — the brief is the single source of truth for project status.
 
 ## README Rule
 
@@ -30,7 +30,7 @@ Do not skip this step — these READMEs are the first thing developers and custo
 
 If you need to understand why a folder exists or what it contains, check these docs first:
 1. **`README.md`** for high-level folder purpose and contents.
-2. **`MANIFEST.md`** for current status and project decisions.
+2. **`BRIEF.md`** for current status and project decisions.
 
 ## File Hygiene
 

@@ -2,6 +2,7 @@
 @using CU_TestHarness.Models
 @using CU_TestHarness.Services
 @using Microsoft.Extensions.Options
+@using static CU_TestHarness.Models.AnalyzerMetadata
 @inject ContentUnderstandingService CuService
 @inject IOptions<ContentUnderstandingOptions> Options
 @inject ModelProfileState ProfileState
@@ -12,12 +13,30 @@
 
 <div class="container">
     <h1>Content Understanding Test Harness</h1>
+    @{
+        var bannerInfo = AnalyzerMetadata.GetInfo(_selectedAnalyzerId);
+        var usesServerDefault = bannerInfo.Requirement is AnalyzerMetadata.ModelRequirement.Completion
+                                or AnalyzerMetadata.ModelRequirement.CompletionAndEmbedding;
+    }
     <div class="model-banner">
-        <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
-        @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
-        { <span class="badge-residency">🍁 Canada</span> }
+        @if (usesServerDefault)
+        {
+            <strong>Model:</strong> <span>Server Default</span>
+            @if (_serverDefaults?.TryGetValue("prebuilt-analyzer-completion", out var mapped) == true)
+            {
+                var deployName = mapped.Contains('/') ? mapped.Split('/').Last() : mapped;
+                <span style="margin-left:0.5rem;"><code>@deployName</code></span>
+            }
+            <span class="badge-global" style="font-size:0.72rem;" title="Prebuilt analyzers use the server-side PATCH /defaults mapping, not your selected model">Server-Side</span>
+        }
         else
-        { <span class="badge-global">🌐 Global</span> }
+        {
+            <strong>Model:</strong> @ProfileState.ActiveProfile.DisplayName
+            @if (ProfileState.ActiveProfile.DataResidencyGuaranteed)
+            { <span class="badge-residency">🍁 Canada</span> }
+            else
+            { <span class="badge-global">🌐 Global</span> }
+        }
     </div>
     <p class="subtitle">Upload a file and analyze it with Azure AI Content Understanding.</p>
 
@@ -45,7 +64,7 @@
         <div class="controls">
             <div class="analyzer-select">
                 <label for="analyzer">Analyzer</label>
-                <select id="analyzer" @bind="_selectedAnalyzerId">
+                <select id="analyzer" @bind="_selectedAnalyzerId" @bind:after="UpdateCompatibilityWarning">
                     <optgroup label="Content Extraction (OCR only, no fields)">
                         <option value="prebuilt-read">prebuilt-read</option>
                         <option value="prebuilt-layout">prebuilt-layout</option>
@@ -90,6 +109,46 @@
                 <label class="custom-toggle">
                     <input type="checkbox" @bind="_useCustomId" /> Use custom ID
                 </label>
+
+                @* ── Model requirement info for selected analyzer ── *@
+                @{ var _analyzerInfo = AnalyzerMetadata.GetInfo(_selectedAnalyzerId); }
+                <div class="analyzer-model-info">
+                    @switch (_analyzerInfo.Requirement)
+                    {
+                        case AnalyzerMetadata.ModelRequirement.None:
+                            <span class="badge-residency" style="font-size:0.78rem;">No model needed</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">@_analyzerInfo.Description</span>
+                            break;
+                        case AnalyzerMetadata.ModelRequirement.Pretrained:
+                            <span class="badge-residency" style="font-size:0.78rem;">Pretrained</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">@_analyzerInfo.Description</span>
+                            break;
+                        case AnalyzerMetadata.ModelRequirement.Completion:
+                            <span class="badge-global" style="font-size:0.78rem;background:#7c3aed;color:#fff;">Completion Model</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">
+                                Uses server default: <code>prebuilt-analyzer-completion</code>
+                                @if (_serverDefaults?.TryGetValue("prebuilt-analyzer-completion", out var compMapping) == true)
+                                { <span> → <code>@compMapping</code></span> }
+                            </span>
+                            break;
+                        case AnalyzerMetadata.ModelRequirement.CompletionAndEmbedding:
+                            <span class="badge-global" style="font-size:0.78rem;background:#2563eb;color:#fff;">Completion + Embedding</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">
+                                Uses server defaults: <code>prebuilt-analyzer-completion</code> + <code>prebuilt-analyzer-embedding</code>
+                            </span>
+                            break;
+                        default:
+                            <span class="badge-global" style="font-size:0.78rem;">Custom</span>
+                            <span style="font-size:0.78rem;color:var(--text-muted);">Uses model block from analyzer definition</span>
+                            break;
+                    }
+                </div>
+                @if (_compatibilityWarning is not null)
+                {
+                    <div class="analyzer-compat-warning">
+                        <span>@_compatibilityWarning</span>
+                    </div>
+                }
             </div>
 
             <button class="btn-analyze" @onclick="RunAnalysis" disabled="@(_selectedFile is null || _isAnalyzing)">
@@ -282,6 +341,10 @@
     private string? _nlError;
     private bool _nlQuerying;
 
+    // Server-side defaults & compatibility
+    private Dictionary<string, string>? _serverDefaults;
+    private string? _compatibilityWarning;
+
     private bool _showViewer => _result is not null && _cachedFileBytes is not null &&
         (_selectedFile?.ContentType?.Contains("pdf") == true ||
          _selectedFile?.ContentType?.StartsWith("image/") == true);
@@ -298,6 +361,8 @@
         _selectedAnalyzerId = Options.Value.DefaultAnalyzerId;
         var all = await CuService.ListAnalyzerIdsAsync();
         _customAnalyzerIds = all.Where(id => !id.StartsWith("prebuilt-")).OrderBy(id => id).ToList();
+        _serverDefaults = await CuService.GetDefaultsAsync();
+        UpdateCompatibilityWarning();
     }
 
     private void OnFileSelected(InputFileChangeEventArgs e)
@@ -453,5 +518,10 @@
             _ = CuService.DeleteAnalyzerAsync(tempId);
             _nlQuerying = false;
         }
+    }
+
+    private void UpdateCompatibilityWarning()
+    {
+        _compatibilityWarning = AnalyzerMetadata.CheckCompatibility(_selectedAnalyzerId, _serverDefaults);
     }
 }

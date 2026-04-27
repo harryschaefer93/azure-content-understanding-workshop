@@ -87,6 +87,22 @@ Open `http://localhost:5000` in your browser.
 dotnet test src/CU_TestHarness.Tests/
 ```
 
+## Multiline Extraction Repro CLI
+
+`src/CU_ReproRunner/` is a console app that automates the FCT Canada multiline-extraction repro workflow against CU. It reuses `ContentUnderstandingService` from the harness for all CU calls (Entra auth, analyzer CRUD, analyze).
+
+**Prerequisites**: `az login`, valid CU endpoint in `src/CU_ReproRunner/appsettings.json` (or `ContentUnderstanding__Endpoint` env var).
+
+```bash
+dotnet build FCT_CU_TestHarness.sln
+dotnet run --project src/CU_ReproRunner -- preflight                       # probe endpoint + defaults
+dotnet run --project src/CU_ReproRunner -- run-repro --allow-replace       # create analyzer + analyze fixtures
+dotnet run --project src/CU_ReproRunner -- run-compare                     # compare across analyzers
+dotnet run --project src/CU_ReproRunner -- run-diff --seed-missing         # diff vs expected/<doc>.expected.json
+```
+
+Outputs land under `output/<doc>/<analyzer>/result.{json,md}`, plus `output/summary_table.md` and `output/diff_report.md`. See [`TROUBLESHOOTING_MULTILINE.md`](TROUBLESHOOTING_MULTILINE.md) for the full workflow and detector limitations.
+
 ## Authentication
 
 All access uses **Microsoft Entra ID** (`DefaultAzureCredential`). API keys are disabled.

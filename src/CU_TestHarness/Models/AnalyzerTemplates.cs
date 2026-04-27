@@ -496,7 +496,7 @@ public static class AnalyzerTemplates
 
     public static IReadOnlyList<(string Name, string Description, Func<string, string, string, string> Generate)> All =>
     [
-        ("Commitment Letter", "Extract borrower names (first/middle/last), split address components, loan details, solicitor conditions — targets common DI pain points", CommitmentLetter),
+        ("Commitment Letter", "Extract borrower names (first/middle/last), split address components, loan details, solicitor conditions — targets all DI pain points reported by FCT", CommitmentLetter),
         ("Enhanced Title Search", "Extract title fields with structured owner names (first/middle/last), short legal, encumbrances — handles cross-page tables", EnhancedTitleSearch),
         ("Field Extraction (Title Search)", "Extract structured fields from title search documents — province, owners, encumbrances, legal description", FieldExtraction),
         ("CTI Document Classification", "Classify documents in a CTI bundle by type, province, and parties — covers title transfers, mortgages, caveats, discharges, etc.", CtiClassification),

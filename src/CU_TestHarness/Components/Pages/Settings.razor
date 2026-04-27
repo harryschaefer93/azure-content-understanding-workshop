@@ -125,6 +125,66 @@
         </div>
     </div>
 
+    <!-- Server-Side Defaults (live from CU API) -->
+    <div class="settings-card">
+        <h3>Server-Side Model Defaults</h3>
+        <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 1rem;">
+            These are the model deployment mappings configured on the CU resource via <code>PATCH /defaults</code>.
+            <strong>Prebuilt analyzers</strong> use these mappings — not your selected model above.
+        </p>
+        @if (_defaultsLoading)
+        {
+            <div style="padding:1rem;color:var(--text-muted);"><span class="spinner"></span> Loading defaults…</div>
+        }
+        else if (_serverDefaults is not null)
+        {
+            <table class="fields-table" style="margin-bottom:1rem;">
+                <thead>
+                    <tr>
+                        <th>Default Key</th>
+                        <th>Mapped Deployment</th>
+                        <th>Used By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var kvp in _serverDefaults.Where(k => k.Key.StartsWith("prebuilt-analyzer")))
+                    {
+                        <tr>
+                            <td><code>@kvp.Key</code></td>
+                            <td><code>@kvp.Value</code></td>
+                            <td style="font-size:0.82rem;">@GetDefaultUsedBy(kvp.Key)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_defaultsWarning is not null)
+            {
+                <div class="error-box" style="background:var(--bg-surface);border-left:3px solid #f59e0b;padding:0.75rem 1rem;">
+                    <span>@_defaultsWarning</span>
+                </div>
+            }
+            <details style="margin-top:0.5rem;">
+                <summary style="cursor:pointer;font-size:0.82rem;color:var(--text-muted);">Show all model deployments (@_serverDefaults.Count total)</summary>
+                <table class="fields-table" style="margin-top:0.5rem;">
+                    <thead><tr><th>Key</th><th>Deployment</th></tr></thead>
+                    <tbody>
+                        @foreach (var kvp in _serverDefaults)
+                        {
+                            <tr>
+                                <td><code>@kvp.Key</code></td>
+                                <td><code>@kvp.Value</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </details>
+        }
+        else
+        {
+            <p style="color:var(--text-muted);">Could not load server defaults. <button class="btn-link" @onclick="LoadDefaults">Retry</button></p>
+        }
+    </div>
+
     <!-- DI Settings -->
     <div class="settings-card">
         <h3>Document Intelligence (Side-by-Side)</h3>
@@ -205,6 +265,11 @@
 
     private string? _saveMessage;
 
+    // Server-side defaults
+    private Dictionary<string, string>? _serverDefaults;
+    private bool _defaultsLoading;
+    private string? _defaultsWarning;
+
     private static string FormatTokenCount(int tokens) =>
         tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.#}M" :
         tokens >= 1_000 ? $"{tokens / 1_000.0:0.#}K" :
@@ -225,6 +290,42 @@
         _selectedCompletionId = ProfileState.ActiveCompletion.Id;
         _selectedEmbeddingId = ProfileState.ActiveEmbedding.Id;
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDefaults();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDefaults()
+    {
+        _defaultsLoading = true;
+        _defaultsWarning = null;
+        StateHasChanged();
+
+        _serverDefaults = await CuService.GetDefaultsAsync();
+
+        // Check for known compatibility issues
+        if (_serverDefaults is not null)
+        {
+            var warning = AnalyzerMetadata.CheckCompatibility("prebuilt-documentFields", _serverDefaults);
+            if (warning is not null)
+                _defaultsWarning = warning;
+        }
+
+        _defaultsLoading = false;
+    }
+
+    private static string GetDefaultUsedBy(string key) => key switch
+    {
+        "prebuilt-analyzer-completion" => "prebuilt-documentFields, prebuilt-documentFieldSchema, *Search analyzers",
+        "prebuilt-analyzer-completion-mini" => "Lightweight completion tasks (if supported by analyzer)",
+        "prebuilt-analyzer-embedding" => "prebuilt-documentSearch, *Search analyzers",
+        _ => "—"
+    };
 
     private void SelectCompletion(string id)
     {

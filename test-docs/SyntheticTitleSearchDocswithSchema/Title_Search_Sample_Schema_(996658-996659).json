@@ -1,0 +1,64 @@
+{
+  "fieldSchema": {
+    "fields": {
+      "Pin": {
+        "type": "string",
+        "method": "extract",
+        "description": "LINC"
+      },
+      "Registered_Owners": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "First_Name": {
+              "type": "string",
+              "method": "extract",
+              "description": "First name of registered owner"
+            },
+            "Last_Name": {
+              "type": "string",
+              "method": "extract",
+              "description": "Last name of registered owner"
+            },
+			"Owner_Address": {
+              "type": "string",
+              "method": "extract",
+              "description": "Owner address"
+            }
+          },
+          "method": "generate"
+        },
+        "method": "generate",
+        "description": "List of registered owners"
+      },
+      "Title_Search": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "Reg_Num": {
+              "type": "string",
+              "method": "extract",
+              "description": "Registration number"
+            },
+            "Date": {
+              "type": "string",
+              "method": "extract",
+              "description": "Registration date"
+            },
+            "Particulars": {
+              "type": "string",
+              "method": "extract",
+              "description": "Particulars. This includes instrument type (e.g. Mortgage, Caveat, Easement, Zoning Regulation, etc.), Party Role (e.g. Mortgagee, Grantee, etc.), Party (firm/individual name), Amount (if applicable), Remarks (e.g. RE: Restrictive Covenant)"
+            }
+          },
+          "method": "generate"
+        },
+        "method": "generate",
+        "description": "Title search table"
+      }
+    },
+    "definitions": {}
+  }
+}
